@@ -25,10 +25,11 @@ def build_parser() -> argparse.ArgumentParser:
                     prog=version_string,
                     description="MCTS-inspired code improvement using LLMs")
     parser.add_argument("project_path", help="Path to the base project", metavar="PATH")
-    parser.add_argument("eval_file", help="File that provides evaluate(path: Path) -> int which is used to grade workspaces *** SHOULD BE NONDESTRICTUVE AS IT WILL BE CALLED ON THE ROOT DIRECTORY ***", metavar="PATH")
+    parser.add_argument("eval_file", help="File that provides evaluate(path: Path) -> float which is used to grade workspaces *** SHOULD BE NONDESTRICTUVE AS IT WILL BE CALLED ON THE ROOT DIRECTORY ***", metavar="PATH")
     parser.add_argument("objective", help="Objective for the LLMs to optimize towards", metavar="str")
     parser.add_argument("-i", "--iterations", help="Number of iterations to run", metavar="int", type=int, default=None)
     parser.add_argument("-t", "--temp", help="Softmax temperature to use when selecting what to explore", metavar="float", type=float, default=0.05)
+    parser.add_argument("--db", help="Path to a database file to begin/resume from. Only run this on trusted databases to avoid command injections", metavar="PATH", default=None)
     parser.add_argument("--debug", help="Enable debug-level logging", action="store_true")
  
     return parser
@@ -40,7 +41,8 @@ def parse_args() -> argparse.Namespace:
 
     logging.basicConfig(filename="project-evo.log", level=logging.DEBUG if args.debug else logging.INFO)
 
-    db = Database(f"./playground/databases/{round(time.time())}.db", PrimaryTableRow) # TODO: allow resumes
+    file = Path(args.db) if args.db is not None else f"./playground/databases/{round(time.time())}.db"
+    db = Database(file, PrimaryTableRow)
 
     globals.PROJECT_ROOT = Path(args.project_path).resolve(strict=True)
     globals.EVAL_FN      = importlib.import_module(args.eval_file).evaluate # TODO: take standard path not module (module.file) path
@@ -55,10 +57,16 @@ def check_requirements():
     from shutil import which
     assert which("git") is not None, "Git is required for workspaces to isolate code"
 
-def seed_db():
-    uuid = uuid7().hex
-    db.insert(PrimaryTableRow("Baseline", uuid, None, globals.EVAL_FN(globals.PROJECT_ROOT)))
-    git.bootstrap(f"{globals.BRANCH_BASE}/{uuid}")
+def init_db():
+    # If the database is empty, bootstrap
+    if len(db.select(f"SELECT id FROM {db.PRIMARY_TABLE} LIMIT 1;")) == 0:
+        uuid = uuid7().hex
+        db.insert(PrimaryTableRow("Baseline", uuid, None, globals.EVAL_FN(globals.PROJECT_ROOT)))
+        git.bootstrap(f"{globals.BRANCH_BASE}/{uuid}")
+    # Otherwise, verify all the branches still exist
+    else:
+        for _, uuid in db.select(f"SELECT id, uuid FROM {db.PRIMARY_TABLE};"):
+            git.ensure_branch_exists(uuid)
 
 # TODO: Make this run in a different thread
 def tick():
@@ -86,7 +94,7 @@ def run_ticks(iters: int | None):
 if __name__ == "__main__":
     args = parse_args()
     check_requirements()
-    seed_db()
+    init_db()
     try:
         run_ticks(args.iterations)
     except BaseException as e:

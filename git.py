@@ -23,6 +23,13 @@ def bootstrap(target_branch: str):
     exec_in_workspace(globals.PROJECT_ROOT, f"git checkout -b {target_branch}")
     autocommit(globals.PROJECT_ROOT)
 
+def ensure_branch_exists(uuid: str):
+    name = f"{globals.BRANCH_BASE}/{uuid}"
+    try:
+        exec_in_workspace(globals.PROJECT_ROOT, f"git rev-parse --verify {name}")
+    except subprocess.CalledProcessError:
+        raise RuntimeError(f"Invalid or corrupted database file; Database expects git branch '{name}' but it does not exist.")
+
 def create_new_workspace(parent: PrimaryTableRow, child: PrimaryTableRow) -> Path:
     branch = f"{globals.BRANCH_BASE}/{child.uuid}"
     path = f"{globals.WORKSPACE_BASE}/{child.uuid}"
