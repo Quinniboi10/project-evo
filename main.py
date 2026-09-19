@@ -4,11 +4,11 @@ import globals
 import git
 import llm
 
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
 from typing import cast
 from uuid import uuid7
 
-import importlib
 import argparse
 import logging
 import random
@@ -45,7 +45,7 @@ def parse_args() -> argparse.Namespace:
     db = Database(file, PrimaryTableRow)
 
     globals.PROJECT_ROOT = Path(args.project_path).resolve(strict=True)
-    globals.EVAL_FN      = importlib.import_module(args.eval_file).evaluate # TODO: take standard path not module (module.file) path
+    globals.EVAL_FN      = SourceFileLoader("_workspace_eval_module", args.eval_file).load_module().evaluate
     globals.OBJECTIVE    = args.objective
     globals.SOFTMAX_TEMP = args.temp
 
