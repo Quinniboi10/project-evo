@@ -13,4 +13,6 @@ PROJECT_GOAL = cast(str, None)
 EVAL_FN      = cast(Callable, None)
 OBJECTIVE    = cast(str, None)
 
+SOFTMAX_TEMP = cast(float, None)
+
 WORKSPACE_LOCKS: dict[Path, Lock] = {}

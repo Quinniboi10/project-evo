@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import globals
+
 from pathlib import Path
 from typing import Optional
 from uuid import uuid7
@@ -7,6 +9,7 @@ from uuid import uuid7
 import sqlite3
 import logging
 import random
+import math
 
 class TableRow():
     def __len__(self):
@@ -17,7 +20,7 @@ class TableRow():
         return getattr(self, str(key))
 
 class PrimaryTableRow(TableRow):
-    def __init__(self, name: str, uuid: str, parent_id: Optional[int], score: int):
+    def __init__(self, name: str, uuid: str, parent_id: Optional[int], score: float):
         self.id = None # SQLite will autofill becuase of AUTOINCREMENT
         self.name = name
         self.uuid = uuid
@@ -63,7 +66,7 @@ class Database():
                 name TEXT NOT NULL,
                 uuid TEXT NOT NULL,
                 parent_id INTEGER,
-                score INTEGER NOT NULL
+                score REAL NOT NULL
             );
         """)
     
@@ -93,24 +96,29 @@ class Database():
         bad_ids = [s[0] for s in samples if s[1] <= 0] # TODO: Support 0
         assert len(bad_ids) == 0, f"Scores must all be greater than zero. ID(s) that failed that condition: {bad_ids}"
 
-        # Convert to cumulative scores
-        for i in range(1, len(samples)):
-            samples[i] = samples[i][0], samples[i - 1][1] + samples[i][1]
+        # Calculate weights
+        scores = [
+            s[1]
+            for s in samples
+        ]
+        max_score = max(scores)
+        weights = [
+            math.exp(math.log(score / max_score) / globals.SOFTMAX_TEMP)
+            for score in scores
+        ]
 
-        # Random sample
-        target = random.randint(1, samples[-1][1])
-        for s in samples:
-            if target <= s[1]:
-                match = self.select(f"SELECT * FROM {self.PRIMARY_TABLE} WHERE id = {s[0]};")
-                assert len(match) == 1, "Duplicate IDs"
+        print(weights)
 
-                match = match[0]
-                
-                # Manually construct and assign the member vars
-                row = self.row_type.__new__(self.row_type)
-                for col, val in zip(self.cursor.description, match):
-                    setattr(row, col[0], val)
+        choice = random.choices(list(range(len(samples))), weights)[0]
 
-                return row
+        match = self.select(f"SELECT * FROM {self.PRIMARY_TABLE} WHERE id = {samples[choice][0]};")
+        assert len(match) == 1, "Duplicate IDs"
 
-        raise KeyError("Dude what?")
+        match = match[0]
+
+        # Manually construct and assign the member vars
+        row = self.row_type.__new__(self.row_type)
+        for col, val in zip(self.cursor.description, match):
+            setattr(row, col[0], val)
+
+        return row

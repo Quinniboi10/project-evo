@@ -5,6 +5,7 @@ import git
 import llm
 
 from pathlib import Path
+from typing import cast
 from uuid import uuid7
 
 import importlib
@@ -17,7 +18,7 @@ random.seed(42)
 
 version_string = f"Project Evo 0.0.1"
 
-db = Database(f"./playground/databases/{round(time.time())}.db", PrimaryTableRow)
+db = cast(Database, None)
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -27,9 +28,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("eval_file", help="File that provides evaluate(path: Path) -> int which is used to grade workspaces *** SHOULD BE NONDESTRICTUVE AS IT WILL BE CALLED ON THE ROOT DIRECTORY ***", metavar="PATH")
     parser.add_argument("objective", help="Objective for the LLMs to optimize towards", metavar="str")
     parser.add_argument("-i", "--iterations", help="Number of iterations to run", metavar="int", type=int, default=None)
+    parser.add_argument("-t", "--temp", help="Softmax temperature to use when selecting what to explore", metavar="float", type=float, default=0.05)
     parser.add_argument("--debug", help="Enable debug-level logging", action="store_true")
  
     return parser
+
+def parse_args() -> argparse.Namespace:
+    global db
+
+    args = build_parser().parse_args()
+
+    logging.basicConfig(filename="project-evo.log", level=logging.DEBUG if args.debug else logging.INFO)
+
+    db = Database(f"./playground/databases/{round(time.time())}.db", PrimaryTableRow) # TODO: allow resumes
+
+    globals.PROJECT_ROOT = Path(args.project_path).resolve(strict=True)
+    globals.EVAL_FN      = importlib.import_module(args.eval_file).evaluate # TODO: take standard path not module (module.file) path
+    globals.OBJECTIVE    = args.objective
+    globals.SOFTMAX_TEMP = args.temp
+
+    assert globals.SOFTMAX_TEMP > 0, "Softmax temp must be greater than 0"
+
+    return args
 
 def check_requirements():
     from shutil import which
@@ -64,13 +84,7 @@ def run_ticks(iters: int | None):
         i += 1
 
 if __name__ == "__main__":
-    args = build_parser().parse_args()
-
-    logging.basicConfig(filename="project-evo.log", level=logging.DEBUG if args.debug else logging.INFO)
-
-    globals.PROJECT_ROOT = Path(args.project_path).resolve(strict=True)
-    globals.EVAL_FN      = importlib.import_module(args.eval_file).evaluate # TODO: take standard path not module (module.file) path
-    globals.OBJECTIVE    = args.objective
+    args = parse_args()
     check_requirements()
     seed_db()
     try:
