@@ -54,11 +54,6 @@ class Database():
 
         logging.log(logging.INFO, f"Created new database at {file}")
 
-    def __del__(self):
-        self.db.commit()
-        self.cursor.close()
-        self.db.close()
-
     def _init_table(self):
         self.cursor.execute(f"""
             CREATE TABLE IF NOT EXISTS {self.PRIMARY_TABLE} (

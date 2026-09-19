@@ -26,5 +26,6 @@ Important:
 - Make the smallest appropriate change that fixes the underlying problem.
 - Do not change user-facing interfaces or behavior (CLI arguments, printed output, file formats, APIs, etc.) unless the user's objective explicitly requires it or the existing changes necessarily require it.
 - Check related code for consistency if the failure indicates the bug is broader than the immediately failing line.
+- A name for your attempt MUST be stored into name.txt if not already present.
 
 Treat the parent branch as a debugging reference and baseline, not as the desired final solution. The tests will be re-run when you're done working."""
