@@ -5,7 +5,7 @@ from pathlib import Path
 import subprocess
 import logging
 
-def work_via_codex(workspace: Path, prompt: str) -> str:
+def work_via_codex(workspace: Path, prompt: str):
     logging.log(logging.INFO, f"Starting worker in {str(workspace)}")
     logging.log(logging.DEBUG, f"OUTBOUND: {prompt}")
 
@@ -23,6 +23,7 @@ def work_via_codex(workspace: Path, prompt: str) -> str:
 
     git.autocommit(workspace)
 
+def get_attempt_name(workspace: Path) -> str:
     with open(workspace / "name.txt", "r") as f:
         lines = f.readlines()
         if len(lines) > 0:

@@ -1,5 +1,5 @@
 from database import Database, PrimaryTableRow
-from prompt import build_prompt
+from prompt import build_prompt, build_run_fix_prompt
 import globals
 import git
 import llm
@@ -23,9 +23,17 @@ db = cast(Database, None)
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
                     prog=version_string,
-                    description="MCTS-inspired code improvement using LLMs")
+                    description="MCTS-inspired code improvement using LLMs",
+                    formatter_class=argparse.RawDescriptionHelpFormatter,
+                    epilog="""
+  Evaluator:
+      The eval_file argument must supply a file that implements the below function signature
+      evaluate(path: Path) -> bool, float
+      where the boolean represents if the test succeeded, and the float represents the score (greater than 0) of the workspace
+      *** EVALUATE SHOULD BE NONDESTRICTUVE AS IT WILL BE CALLED ON THE ROOT DIRECTORY ***
+ """)
     parser.add_argument("project_path", help="Path to the base project", metavar="PATH")
-    parser.add_argument("eval_file", help="File that provides evaluate(path: Path) -> float which is used to grade workspaces *** SHOULD BE NONDESTRICTUVE AS IT WILL BE CALLED ON THE ROOT DIRECTORY ***", metavar="PATH")
+    parser.add_argument("eval_file", help="File that provides the function to evaluate a workspace (see below)", metavar="PATH")
     parser.add_argument("objective", help="Objective for the LLMs to optimize towards", metavar="str")
     parser.add_argument("-i", "--iterations", help="Number of iterations to run", metavar="int", type=int, default=None)
     parser.add_argument("-t", "--temp", help="Softmax temperature to use when selecting what to explore", metavar="float", type=float, default=0.05)
@@ -60,8 +68,10 @@ def check_requirements():
 def init_db():
     # If the database is empty, bootstrap
     if len(db.select(f"SELECT id FROM {db.PRIMARY_TABLE} LIMIT 1;")) == 0:
+        passed, score = globals.EVAL_FN(globals.PROJECT_ROOT)
+        assert passed, "Baseline failed to pass evaluate()"
         uuid = uuid7().hex
-        db.insert(PrimaryTableRow("Baseline", uuid, None, globals.EVAL_FN(globals.PROJECT_ROOT)))
+        db.insert(PrimaryTableRow("Baseline", uuid, None, score))
         git.bootstrap(f"{globals.BRANCH_BASE}/{uuid}")
     # Otherwise, verify all the branches still exist
     else:
@@ -77,9 +87,23 @@ def tick():
     workspace = git.create_new_workspace(parent, child)
     
     prompt = build_prompt(parent, child, random.random() < 0.3)
-    child.name = llm.work_via_codex(workspace, prompt)
+    llm.work_via_codex(workspace, prompt)
+    child.name = llm.get_attempt_name(workspace)
 
-    child.score = globals.EVAL_FN(workspace) # TODO: verification
+    passed, score = globals.EVAL_FN(workspace)
+    fixes = 0
+    while not passed and fixes < globals.MAX_FIX_ATTEMPTS:
+        fixes += 1
+        logging.log(logging.INFO, f"Run UUID {child.uuid} failed verification, retrying ({fixes}/{globals.MAX_FIX_ATTEMPTS})")
+        prompt = build_run_fix_prompt(parent, child)
+        llm.work_via_codex(workspace, prompt)
+        passed, score = globals.EVAL_FN(workspace)
+
+    if not passed:
+        logging.log(logging.WARNING, f"Skipping child UUID {child.uuid} after failing {fixes} attempts to pass")
+        return # Do not add the broken child to the database as reference
+
+    child.score = score
 
     db.insert(child)
 
