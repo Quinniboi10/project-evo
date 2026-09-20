@@ -1,13 +1,15 @@
 from database import PrimaryTableRow
-import globals
+import config
 
 from threading import Lock
 from pathlib import Path
 
 import subprocess
 
+workspace_locks: dict[Path, Lock] = {}
+
 def exec_in_workspace(workspace: Path, cmd: str):
-    with globals.WORKSPACE_LOCKS.setdefault(workspace, Lock()):
+    with workspace_locks.setdefault(workspace, Lock()):
         subprocess.run(cmd, cwd=workspace, shell=True, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def autocommit(workspace: Path):
@@ -20,23 +22,23 @@ def autocommit(workspace: Path):
             raise e
 
 def bootstrap(target_branch: str):
-    exec_in_workspace(globals.PROJECT_ROOT, f"git checkout -b {target_branch}")
-    autocommit(globals.PROJECT_ROOT)
+    exec_in_workspace(config.cfg.project_root, f"git checkout -b {target_branch}")
+    autocommit(config.cfg.project_root)
 
 def ensure_branch_exists(uuid: str):
-    name = f"{globals.BRANCH_BASE}/{uuid}"
+    name = f"{config.cfg.branch_base}/{uuid}"
     try:
-        exec_in_workspace(globals.PROJECT_ROOT, f"git rev-parse --verify {name}")
+        exec_in_workspace(config.cfg.project_root, f"git rev-parse --verify {name}")
     except subprocess.CalledProcessError:
         raise RuntimeError(f"Invalid or corrupted database file; Database expects git branch '{name}' but it does not exist.")
 
 def create_new_workspace(parent: PrimaryTableRow, child: PrimaryTableRow) -> Path:
-    branch = f"{globals.BRANCH_BASE}/{child.uuid}"
-    path = f"{globals.WORKSPACE_BASE}/{child.uuid}"
-    parent_br = f"{globals.BRANCH_BASE}/{parent.uuid}"
+    branch = f"{config.cfg.branch_base}/{child.uuid}"
+    path = f"{config.cfg.workspace_base}/{child.uuid}"
+    parent_br = f"{config.cfg.branch_base}/{parent.uuid}"
 
-    (globals.PROJECT_ROOT / globals.WORKSPACE_BASE).mkdir(exist_ok=True)
+    (config.cfg.project_root / config.cfg.workspace_base).mkdir(exist_ok=True)
 
-    exec_in_workspace(globals.PROJECT_ROOT, f"git worktree add -b {branch} {path} {parent_br}")
+    exec_in_workspace(config.cfg.project_root, f"git worktree add -b {branch} {path} {parent_br}")
 
-    return (globals.PROJECT_ROOT / path).resolve(strict=True)
+    return (config.cfg.project_root / path).resolve(strict=True)

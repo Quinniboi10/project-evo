@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import globals
+import config
 
 from pathlib import Path
 from typing import Optional
@@ -98,7 +98,7 @@ class Database():
         ]
         max_score = max(scores)
         weights = [
-            math.exp(math.log(score / max_score) / globals.SOFTMAX_TEMP)
+            math.exp(math.log(score / max_score) / config.cfg.softmax_temp)
             for score in scores
         ]
 

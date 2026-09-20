@@ -1,0 +1,10 @@
+[general]
+temperature = 0.05 # Softmax temperature to use when selecting what to explore
+concurrency = 5    # Number of concurrent threads to run
+
+max_fix_attempts = 3     # Maximum number of times to allow the LLM to try to fix a workspace
+llm_timeout_sec  = 10800 # Maximum time to wait before killing the LLM
+
+[git]
+branch_base = "project-evo"   # Git branches will be {base}/{uuid}
+workspace_base = "workspaces" # Git workspaces will be {project root}/{base}/{uuid}

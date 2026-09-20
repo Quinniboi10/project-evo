@@ -1,4 +1,4 @@
-import globals
+import config 
 import git
 
 from pathlib import Path
@@ -13,7 +13,7 @@ def work_via_codex(workspace: Path, prompt: str):
     try:
         result = subprocess.run(
             ["codex", "exec", "--ephemeral", "--cd", str(workspace), "--sandbox", "workspace-write", "-m", "gpt-6-astra", "-"],
-            input=prompt, text=True, capture_output=True, timeout=globals.LLM_QUERY_TIMEOUT_SECONDS
+            input=prompt, text=True, capture_output=True, timeout=config.cfg.llm_timeout_sec
         )
 
         if result.returncode != 0:
