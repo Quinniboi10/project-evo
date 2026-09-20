@@ -16,10 +16,14 @@ def work_via_codex(workspace: Path, prompt: str):
             input=prompt, text=True, capture_output=True, timeout=globals.LLM_QUERY_TIMEOUT_SECONDS
         )
 
-        logging.log(logging.DEBUG, f"INBOUND STDERR: {result.stderr}")
-        logging.log(logging.DEBUG, f"INBOUND STDOUT: {result.stdout}")
-    
-        result.check_returncode()
+        if result.returncode != 0:
+            logging.log(logging.ERROR, f"Codex session returned non-zero exit code")
+            logging.log(logging.ERROR, f"INBOUND STDERR: {result.stderr}")
+            logging.log(logging.ERROR, f"INBOUND STDOUT: {result.stdout}")
+            result.check_returncode()
+        else:
+            logging.log(logging.DEBUG, f"INBOUND STDERR: {result.stderr}")
+            logging.log(logging.DEBUG, f"INBOUND STDOUT: {result.stdout}")
 
         logging.log(logging.INFO, f"Worker finished in {str(workspace)}")
     except subprocess.TimeoutExpired:
