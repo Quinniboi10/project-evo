@@ -30,8 +30,8 @@ def build_parser() -> argparse.ArgumentParser:
       where the boolean represents if the test succeeded, and the float represents the score (greater than 0) of the workspace
       *** EVALUATE SHOULD BE NONDESTRICTUVE AS IT WILL BE CALLED ON THE ROOT DIRECTORY ***
  """)
-    parser.add_argument("project_path", help="Path to the base project", metavar="PATH")
-    parser.add_argument("eval_file", help="File that provides the function to evaluate a workspace (see below)", metavar="PATH")
+    parser.add_argument("project_path", help="Path to the base project")
+    parser.add_argument("eval_file", help="File that provides the function to evaluate a workspace (see below)")
     obj_group = parser.add_mutually_exclusive_group(required=True)
     obj_group.add_argument("--objective", help="Objective for the LLMs to follow", metavar="str")
     obj_group.add_argument("--objective_file", help="File from which to read the objective", metavar="PATH")
