@@ -1,0 +1,9 @@
+{
+  "mode": "enforce",
+  "filesystem": {
+    "denyRead": ["/home"],
+    "allowRead": ["."],
+    "allowWrite": [".", "/tmp"],
+    "denyWrite": []
+  }
+}

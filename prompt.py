@@ -4,7 +4,7 @@ import config
 
 def build_prompt(parent: PrimaryTableRow, child: PrimaryTableRow):
     return f"""Improve the existing code for {parent.name} in the git branch {config.cfg.branch_base}/{child.uuid}. {"Try to make significant variation/changes or big refactors/improvements. You should try to make your new code different in idea and execution from the reference." if child.task == Task.EXPLORE.name else "Don't make any drastic changes, just try to improve on the concepts already present."}
-The user stated your objective: '{config.cfg.objective}'. Unless the user explicitly tells you to do so, you should not change user interfacing (CLI args, readings printed, etc), as they may be used for performance evaluation. Commit your changes as you work.
+The user stated your objective: '{config.cfg.objective}'. Unless the user explicitly tells you to do so, you should not change user interfacing (CLI args, readings printed, etc), as they may be used for performance evaluation. Commit your changes as you work if git is available, otherwise just keep working.
 After you finish working, you MUST write name.txt, containing a name for your attempt."""
 
 def build_run_fix_prompt(parent: PrimaryTableRow, child: PrimaryTableRow):
@@ -18,7 +18,7 @@ Your objective is to diagnose the failure and fix the current implementation whi
 The parent branch is available at:
     {parent_branch}
 
-Use the parent branch as a reference for understanding what changed in this attempt. Inspect the diff between the parent branch and the current workspace/branch to identify the changes introduced by this attempt and determine which of them caused the test failure.
+Use the parent branch as a reference for understanding what changed in this attempt. If Git is operational, inspect the diff between the parent branch and the current workspace/branch to identify the changes introduced by this attempt and determine which of them caused the test failure.
 
 Important:
 - Fix the current branch; do not switch to or modify the parent branch.
@@ -28,5 +28,6 @@ Important:
 - Do not change user-facing interfaces or behavior (CLI arguments, printed output, file formats, APIs, etc.) unless the user's objective explicitly requires it or the existing changes necessarily require it.
 - Check related code for consistency if the failure indicates the bug is broader than the immediately failing line.
 - A name for your attempt MUST be stored into name.txt if not already present.
+- Commit your changes as you work. If Git access is unavailable, diagnose and repair the current files directly. The host will commit your changes automatically.
 
-Treat the parent branch as a debugging reference and baseline, not as the desired final solution. Commit your changes as you work. The tests will be re-run when you're done working."""
+Treat the parent branch as a debugging reference and baseline, not as the desired final solution. The tests will be re-run when you're done working."""

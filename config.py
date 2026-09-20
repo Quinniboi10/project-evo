@@ -35,6 +35,21 @@ class Config:
         assert max_concurrency >= self.concurrency, f"Config asks for concurrency of {self.concurrency} but all listed providers only supply {max_concurrency}"
         assert self.max_concurrency(self.fallback_model) >= self.concurrency, f"Fallback model must be able to handle {max_concurrency} concurrent sessions"
 
+        for job, model in self._routing.items():
+            if self.model_full_name(model).startswith("opencode/"):
+                logging.log(logging.WARNING, f"{model} is routing through opencode's free model library. Ensuring user is OK with data collection.")
+                response = input(f"You are routing {job} through {model} which will likely collect data. Do you accept this risk? (y/n)  ").lower()
+                while response != 'y' and response != 'n':
+                    response = input(f"Invalid answer, try again. (y/n)  ")
+                if response == 'n':
+                    exit(1)
+
+        if any(self.adapter(model) == "opencode" for model in self._routing.values()):
+            msg = "Please note, OpenCode's sandboxing is less secure than other harnesses like Codex, and subsequently to ensure better privacy, the agent will not be able to make git iteractions (though commits will be made automatically)."
+            print(msg)
+            logging.log(logging.WARNING, msg)
+
+
     def _set_attributes(self):
         self.project_root                                  = Path(self.args.project_path).resolve(strict=True)
         self.eval_fn: Callable[[Path], tuple[bool, float]] = SourceFileLoader("_workspace_eval_module", self.args.eval_file).load_module().evaluate
