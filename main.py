@@ -1,5 +1,6 @@
 from database import Database, PrimaryTableRow
 from prompt import build_prompt, build_run_fix_prompt
+from task import Task
 import config
 import git
 import llm
@@ -53,7 +54,7 @@ def init_db():
         passed, score = config.cfg.eval_fn(config.cfg.project_root)
         assert passed, "Baseline failed to pass evaluate()"
         uuid = uuid7().hex
-        db.insert(PrimaryTableRow("Baseline", uuid, None, score))
+        db.insert(PrimaryTableRow("Baseline", uuid, None, None, None, score))
         git.bootstrap(f"{config.cfg.branch_base}/{uuid}")
     # Otherwise, verify all the branches still exist
     else:
@@ -66,11 +67,13 @@ def run_worker():
     parent = db.weighted_sample()
     assert type(parent) == PrimaryTableRow
 
-    child = PrimaryTableRow.create_new_child(parent)
+    task = Task.EXPLORE if random.random() < 0.3 else Task.IMPROVE # TODO: smarter exploration
+
+    child = PrimaryTableRow.create_new_child(parent, task)
     workspace = git.create_new_workspace(parent, child)
     
-    prompt = build_prompt(parent, child, random.random() < 0.3)
-    llm.work_via_codex(workspace, prompt)
+    prompt = build_prompt(parent, child)
+    child.model = llm.route_prompt(workspace, prompt, task)
 
     passed, score = config.cfg.eval_fn(workspace)
     fixes = 0
@@ -78,7 +81,7 @@ def run_worker():
         fixes += 1
         logging.log(logging.INFO, f"Run UUID {child.uuid} failed verification, retrying ({fixes}/{config.cfg.max_fix_attempts})")
         prompt = build_run_fix_prompt(parent, child)
-        llm.work_via_codex(workspace, prompt)
+        llm.route_prompt(workspace, prompt, task)
         passed, score = config.cfg.eval_fn(workspace)
 
     if not passed:

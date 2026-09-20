@@ -1,9 +1,8 @@
-from __future__ import annotations
-
+from task import Task
 import config
 
+from typing import Optional, Self
 from pathlib import Path
-from typing import Optional
 from uuid import uuid7
 
 import sqlite3
@@ -12,6 +11,9 @@ import random
 import math
 
 class TableRow():
+    @classmethod
+    def create_dummy(cls) -> Self:
+        raise NotImplementedError("Cannot create dummy of TableRow")
     def __len__(self):
         return len(vars(self))
     def __getitem__(self, key):
@@ -20,19 +22,25 @@ class TableRow():
         return getattr(self, str(key))
 
 class PrimaryTableRow(TableRow):
-    def __init__(self, name: str, uuid: str, parent_id: Optional[int], score: float):
+    def __init__(self, name: str, uuid: str, model: Optional[str], task: Optional[Task], parent_id: Optional[int], score: float):
         self.id = None # SQLite will autofill becuase of AUTOINCREMENT
         self.name = name
         self.uuid = uuid
+        self.model = model
+        self.task = task.name if task is not None else None
         self.parent_id = parent_id
         self.score = score
 
     @classmethod
-    def create_new_child(cls, parent: PrimaryTableRow):
-        return cls("New Child", uuid7().hex, parent.id, -1)
+    def create_new_child(cls, parent: PrimaryTableRow, task: Task) -> Self:
+        return cls("New Child", uuid7().hex, None, task, parent.id, -1)
+
+    @classmethod
+    def create_dummy(cls) -> Self:
+        return cls("Dummy", "0", None, None, None, 0)
     
     def __repr__(self) -> str:
-        return f"{type(self).__name__}({self.name}, {self.uuid}, {self.parent_id}, {self.score})"
+        return f"{type(self).__name__}({self.name}, {self.uuid}, {self.model}, {self.task}, {self.parent_id}, {self.score})"
 
 class Database():
     PRIMARY_TABLE = "evolve"
@@ -45,14 +53,30 @@ class Database():
 
         file.parent.mkdir(parents=True, exist_ok=True)
 
+        already_exists = file.exists()
+
         self.db = sqlite3.connect(file)
         self.cursor = self.db.cursor()
 
         self.row_type = row_type
 
-        self._init_table()
-
-        logging.log(logging.INFO, f"Created new database at {file}")
+        if already_exists:
+            try:
+                query = self.select(f"SELECT * FROM {self.PRIMARY_TABLE} LIMIT 1;")
+                if len(query) > 0:
+                    # Try to get attributes on a row and make sure the columns match
+                    row = self.row_type.create_dummy()
+                    for col in self.cursor.description:
+                        getattr(row, col[0])
+                    db_cols = len(self.cursor.description)
+                    row_vals = len(vars(row))
+                    assert db_cols == row_vals, f"Database has {db_cols} columns while {row_vals} columns are expected. Is your database from and old version?"
+            except AttributeError:
+                raise sqlite3.DatabaseError("Database already exists but row format does not match expectation")
+            logging.log(logging.INFO, f"Loaded database at {str(file)}")
+        else:
+            self._init_table()
+            logging.log(logging.INFO, f"Created new database at {str(file)}")
 
     def _init_table(self):
         self.cursor.execute(f"""
@@ -60,6 +84,8 @@ class Database():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 uuid TEXT NOT NULL,
+                model TEXT,
+                task TEXT,
                 parent_id INTEGER,
                 score REAL NOT NULL
             );

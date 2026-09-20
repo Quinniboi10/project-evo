@@ -8,3 +8,24 @@ llm_timeout_sec  = 10800 # Maximum time to wait before killing the LLM
 [git]
 branch_base = "project-evo"   # Git branches will be {base}/{uuid}
 workspace_base = "workspaces" # Git workspaces will be {project root}/{base}/{uuid}
+
+[providers.astra]
+adapter = "codex"
+model = "gpt-6-astra"
+max_concurrency = 5
+
+[providers.sol]
+adapter = "codex"
+model = "gpt-5.6-sol"
+max_concurrency = 5
+
+[providers.qwen]
+adapter = "codex"
+model = "Qwen3.8-27B-Dense"
+extra_args = ["--profile", "qwen38-dense"] # Optional extra arguments to pass to the harness
+max_concurrency = 1
+
+[routing]
+exploration = "qwen"
+improvement = "astra"
+fallback    = "sol"

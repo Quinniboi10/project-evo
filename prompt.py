@@ -1,8 +1,9 @@
 from database import PrimaryTableRow
+from task import Task
 import config
 
-def build_prompt(parent: PrimaryTableRow, child: PrimaryTableRow, try_something_new: bool):
-    return f"""Improve the existing code for {parent.name} in the git branch {config.cfg.branch_base}/{child.uuid}. {"Try to make significant variation/changes on some significant portion of the existing changes" if try_something_new else "Don't make any drastic changes, just try to improve on the concepts already present."}
+def build_prompt(parent: PrimaryTableRow, child: PrimaryTableRow):
+    return f"""Improve the existing code for {parent.name} in the git branch {config.cfg.branch_base}/{child.uuid}. {"Try to make significant variation/changes or big refactors/improvements. You should try to make your new code different in idea and execution from the reference." if child.task == Task.EXPLORE.name else "Don't make any drastic changes, just try to improve on the concepts already present."}
 The user stated your objective: '{config.cfg.objective}'. Unless the user explicitly tells you to do so, you should not change user interfacing (CLI args, readings printed, etc), as they may be used for performance evaluation. Commit your changes as you work.
 After you finish working, you MUST write name.txt, containing a name for your attempt."""
 

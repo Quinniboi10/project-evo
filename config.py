@@ -29,6 +29,12 @@ class Config:
         assert self.softmax_temp > 0, "Softmax temperature must be greater than 0"
         assert len(self.objective) > 0, "Objective does not exist"
 
+        max_concurrency = 0
+        for model in self._routing.values():
+            max_concurrency += self.max_concurrency(model)
+        assert max_concurrency >= self.concurrency, f"Config asks for concurrency of {self.concurrency} but all listed providers only supply {max_concurrency}"
+        assert self.max_concurrency(self.fallback_model) >= self.concurrency, f"Fallback model must be able to handle {max_concurrency} concurrent sessions"
+
     def _set_attributes(self):
         self.project_root                                  = Path(self.args.project_path).resolve(strict=True)
         self.eval_fn: Callable[[Path], tuple[bool, float]] = SourceFileLoader("_workspace_eval_module", self.args.eval_file).load_module().evaluate
@@ -43,6 +49,25 @@ class Config:
 
         self.branch_base    = self.config["git"]["branch_base"]
         self.workspace_base = self.config["git"]["workspace_base"]
+
+        self._providers = self.config["providers"]
+        self._routing   = self.config["routing"]
+
+        self.exploration_model: str = self._routing["exploration"]
+        self.improvement_model: str = self._routing["improvement"]
+        self.fallback_model: str    = self._routing["fallback"]
+
+    def adapter(self, model: str) -> str:
+        return self._providers[model]["adapter"]
+    def model_full_name(self, model: str) -> str:
+        return self._providers[model]["model"]
+    def extra_args(self, model: str) -> list[str]:
+        try:
+            return self._providers[model]["extra_args"]
+        except KeyError:
+            return []
+    def max_concurrency(self, model: str) -> int:
+        return self._providers[model]["max_concurrency"]
 
 # Global configuration, set after parsing arguments
 cfg = cast(Config, None)
