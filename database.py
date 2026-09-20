@@ -102,8 +102,6 @@ class Database():
             for score in scores
         ]
 
-        print(weights)
-
         choice = random.choices(list(range(len(samples))), weights)[0]
 
         match = self.select(f"SELECT * FROM {self.PRIMARY_TABLE} WHERE id = {samples[choice][0]};")

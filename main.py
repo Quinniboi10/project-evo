@@ -14,6 +14,8 @@ import logging
 import random
 import time
 
+from tqdm import tqdm
+
 random.seed(42)
 
 version_string = f"Project Evo 0.0.1"
@@ -114,7 +116,7 @@ def run_iterations(iters: int, concurrency: int):
             for _ in range(iters)
         ]
 
-        for future in as_completed(futures):
+        for future in tqdm(as_completed(futures), total=len(futures), dynamic_ncols=True):
             try:
                 result = future.result()
             except BaseException as e:

@@ -8,7 +8,7 @@ import subprocess
 
 def exec_in_workspace(workspace: Path, cmd: str):
     with globals.WORKSPACE_LOCKS.setdefault(workspace, Lock()):
-        subprocess.run(cmd, cwd=workspace, shell=True, check=True)
+        subprocess.run(cmd, cwd=workspace, shell=True, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def autocommit(workspace: Path):
     try:
