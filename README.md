@@ -9,6 +9,7 @@ This project is inspired by [Chaos](https://github.com/Quinniboi10/Chaos), a hig
 
 ### Requirements
 At least Python 3.14, tqdm 4.70.1, OpenAI Codex 0.155.1  
+Graphviz 0.21 or later is optional for visualization  
 All other libraries and services are bundled in Python itself
 
 ### Usage

@@ -40,16 +40,21 @@ class PrimaryTableRow(TableRow):
         return cls("Dummy", "0", None, None, None, 0)
     
     def __repr__(self) -> str:
-        return f"{type(self).__name__}({self.name}, {self.uuid}, {self.model}, {self.task}, {self.parent_id}, {self.score})"
+        args = [self.name, self.uuid, self.model, self.task, self.parent_id, self.score]
+        args = [repr(a) for a in args]
+        return f"{type(self).__name__}({", ".join(args)})"
 
 class Database():
     PRIMARY_TABLE = "evolve"
     
-    def __init__(self, file: str|Path, row_type: type):
+    def __init__(self, file: str|Path, row_type: type, require_exist: bool=False):
         assert issubclass(row_type, TableRow), "Table rows must be derived from the TableRow object"
 
         if not isinstance(file, Path):
             file = Path(file)
+
+        if require_exist:
+            file = file.resolve(strict=True)
 
         file.parent.mkdir(parents=True, exist_ok=True)
 
