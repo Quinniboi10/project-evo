@@ -71,27 +71,30 @@ def run_worker():
 
     child = PrimaryTableRow.create_new_child(parent, task)
     workspace = git.create_new_workspace(parent, child)
-    
-    prompt = build_prompt(parent, child)
-    child.model = llm.route_prompt(workspace, prompt, task)
 
-    passed, score = config.cfg.eval_fn(workspace)
-    fixes = 0
-    while not passed and fixes < config.cfg.max_fix_attempts:
-        fixes += 1
-        logging.log(logging.INFO, f"Run UUID {child.uuid} failed verification, retrying ({fixes}/{config.cfg.max_fix_attempts})")
-        prompt = build_run_fix_prompt(parent, child)
-        llm.route_prompt(workspace, prompt, task)
+    try:
+        prompt = build_prompt(parent, child)
+        child.model = llm.route_prompt(workspace, prompt, task)
+
         passed, score = config.cfg.eval_fn(workspace)
+        fixes = 0
+        while not passed and fixes < config.cfg.max_fix_attempts:
+            fixes += 1
+            logging.log(logging.INFO, f"Run UUID {child.uuid} failed verification, retrying ({fixes}/{config.cfg.max_fix_attempts})")
+            prompt = build_run_fix_prompt(parent, child)
+            llm.route_prompt(workspace, prompt, task)
+            passed, score = config.cfg.eval_fn(workspace)
 
-    if not passed:
-        logging.log(logging.WARNING, f"Skipping child UUID {child.uuid} after failing {fixes} attempts to pass")
-        return # Do not add the broken child to the database as reference
+        if not passed:
+            logging.log(logging.WARNING, f"Skipping child UUID {child.uuid} after failing {fixes} attempts to pass")
+            return # Do not add the broken child to the database as reference
 
-    child.score = score
-    child.name = llm.get_attempt_name(workspace)
+        child.score = score
+        child.name = llm.get_attempt_name(workspace)
 
-    db.insert(child)
+        db.insert(child)
+    finally:
+        git.delete_workspace(workspace)
 
 def run_iterations():
     with ThreadPoolExecutor(max_workers=config.cfg.concurrency) as pool:

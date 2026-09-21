@@ -42,3 +42,6 @@ def create_new_workspace(parent: PrimaryTableRow, child: PrimaryTableRow) -> Pat
     exec_in_workspace(config.cfg.project_root, f"git worktree add -b {branch} {path} {parent_br}")
 
     return (config.cfg.project_root / path).resolve(strict=True)
+
+def delete_workspace(workspace: Path):
+    exec_in_workspace(config.cfg.project_root, f"git worktree remove --force \"{str(workspace)}\"")
