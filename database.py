@@ -109,6 +109,16 @@ class Database():
     def select(self, cmd: str):
         return self.cursor.execute(cmd).fetchall()
 
+    def iters_since_last_improvement(self) -> int:
+        best = self.select(f"SELECT id FROM {self.PRIMARY_TABLE} ORDER BY score DESC LIMIT 1;")
+        if len(best) == 0:
+            return 0
+        best = best[0][0]
+
+        last = self.select(f"SELECT id FROM {self.PRIMARY_TABLE} ORDER BY id DESC LIMIT 1;")[0][0]
+
+        return int(last) - int(best)
+
     def weighted_sample(self) -> TableRow:
         # Get (id, score) pairs
         samples = self.select(f"SELECT id, score FROM {self.PRIMARY_TABLE}")
@@ -117,6 +127,9 @@ class Database():
         bad_ids = [s[0] for s in samples if s[1] <= 0] # TODO: Support 0
         assert len(bad_ids) == 0, f"Scores must all be greater than zero. ID(s) that failed that condition: {bad_ids}"
 
+        # Calculate temp
+        temp = config.cfg.softmax_temp * min(max((self.iters_since_last_improvement() + 1) / 3, 1), 8) # Linearly grow the temp multiplier from 1x to 8x
+
         # Calculate weights
         scores = [
             s[1]
@@ -124,7 +137,7 @@ class Database():
         ]
         max_score = max(scores)
         weights = [
-            math.exp(math.log(score / max_score) / config.cfg.softmax_temp)
+            math.exp(math.log(score / max_score) / temp)
             for score in scores
         ]
 

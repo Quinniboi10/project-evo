@@ -105,7 +105,7 @@ def run_iterations():
         ]
 
         with tqdm(total=config.cfg.iterations) as pbar:
-            while len(pending) > 0: # TODO: TQDM-ify
+            while len(pending) > 0:
                 done, pending = wait(pending, return_when="FIRST_COMPLETED")
 
                 for future in done:
