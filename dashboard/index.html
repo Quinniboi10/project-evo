@@ -1,0 +1,400 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Project Evo</title>
+
+    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+
+    <style>
+        html, body {
+            margin: 0;
+            width: 100%;
+            height: 100%;
+            background: #101722;
+            color: #e2e8f0;
+            font: 15px system-ui, sans-serif;
+        }
+
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        header { padding: 20px 24px 12px; }
+        h1 { font-size: 23px; margin: 0 0 8px; font-weight: 600; }
+        #summary, #live-status { color: #aab8cd; line-height: 1.5; }
+
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+            align-items: center;
+        }
+
+        .timeline { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 220px; }
+        #step { flex: 1; min-width: 80px; accent-color: #34d399; }
+        #step-label { min-width: 7ch; text-align: right; font-variant-numeric: tabular-nums; }
+        .view-controls { display: flex; gap: 10px; margin-left: auto; }
+
+        button {
+            background: #233047;
+            color: #e2e8f0;
+            border: 1px solid #51627a;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        button:hover:not(:disabled) { background: #30415c; }
+        button:focus-visible { outline: 2px solid #34d399; outline-offset: 3px; }
+        button:disabled { opacity: 0.5; cursor: default; }
+
+        #graph {
+            width: 100%;
+            flex: 1;
+            min-height: 0;
+        }
+
+        div.vis-tooltip {
+            max-width: min(360px, calc(100vw - 32px));
+            white-space: normal;
+            overflow-wrap: anywhere;
+            padding: 10px 12px;
+            background: #233047;
+            color: #e2e8f0;
+            border: 1px solid #51627a;
+            border-radius: 6px;
+            font: 14px/1.5 system-ui, sans-serif;
+            pointer-events: none;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>Project Evo · exploration tree</h1>
+        <div id="summary" role="status">Loading graph…</div>
+        <div id="live-status">OFFLINE - Last updated: never</div>
+        <div class="toolbar" role="group" aria-label="Graph navigation">
+            <div class="timeline">
+                <button id="replay" type="button" disabled>Replay</button>
+                <label for="step">Attempt</label>
+                <input id="step" type="range" min="0" max="0" value="0" step="1" disabled>
+                <output id="step-label" for="step">0 / 0</output>
+            </div>
+            <div class="view-controls">
+                <button id="fit" type="button" disabled>Fit all</button>
+                <button id="best" type="button" disabled>Focus best</button>
+            </div>
+        </div>
+    </header>
+    <div id="graph"></div>
+
+    <script>
+        let network = null;
+        let nodes;
+        let edges;
+        let best = null;
+        let selectedNodeId = null;
+        let lastSnapshot = null;
+        let lastUpdated = null;
+        let isLive = false;
+        let fullGraph = { nodes: [], edges: [] };
+        let pendingGraph = null;
+        let replayTimer = null;
+        const step = document.getElementById("step");
+        const replayButton = document.getElementById("replay");
+
+        function showAttempt() {
+            const visibleNodes = fullGraph.nodes.slice(0, Number(step.value) + 1);
+            const visibleIds = new Set(visibleNodes.map(node => node.id));
+            document.getElementById("step-label").textContent = `${step.value} / ${step.max}`;
+            renderGraph({
+                nodes: visibleNodes,
+                edges: fullGraph.edges.filter(edge => visibleIds.has(edge.from) && visibleIds.has(edge.to))
+            });
+        }
+
+        function receiveGraph(graph) {
+            // Keep a replay's timeline fixed while live snapshots arrive.
+            if (replayTimer !== null) {
+                pendingGraph = graph;
+                return;
+            }
+            const followLatest = !fullGraph.nodes.length || Number(step.value) === Number(step.max);
+            const viewedId = fullGraph.nodes[Number(step.value)]?.id;
+            fullGraph = { ...graph, nodes: [...graph.nodes].sort((a, b) => a.id - b.id) };
+            step.max = Math.max(0, fullGraph.nodes.length - 1);
+            const viewedIndex = fullGraph.nodes.findIndex(node => node.id === viewedId);
+            step.value = followLatest ? step.max : Math.max(0, viewedIndex);
+            step.disabled = replayButton.disabled = fullGraph.nodes.length < 2;
+            showAttempt();
+        }
+
+        function stopReplay() {
+            clearInterval(replayTimer);
+            replayTimer = null;
+            replayButton.textContent = "Replay";
+            if (pendingGraph) {
+                const graph = pendingGraph;
+                pendingGraph = null;
+                receiveGraph(graph);
+            }
+        }
+
+        step.addEventListener("input", () => {
+            stopReplay();
+            showAttempt();
+        });
+        replayButton.onclick = () => {
+            if (replayTimer !== null) {
+                stopReplay();
+                return;
+            }
+            if (fullGraph.nodes.length < 2) return;
+            step.value = 0;
+            showAttempt();
+            replayButton.textContent = "Pause";
+            const started = performance.now();
+            const finalStep = Number(step.max);
+            replayTimer = setInterval(() => {
+                const elapsed = Math.min(10, (performance.now() - started) / 1000);
+                // Two-second speed ramps, with steady speed for the middle six seconds.
+                // The area under this speed curve is eight, normalizing progress to 0–1.
+                const progress = elapsed < 2
+                    ? elapsed * elapsed / 32
+                    : elapsed > 8
+                        ? 1 - (10 - elapsed) ** 2 / 32
+                        : (elapsed - 1) / 8;
+                const nextStep = Math.floor(progress * finalStep);
+                if (nextStep !== Number(step.value)) {
+                    step.value = nextStep;
+                    showAttempt();
+                }
+                if (progress === 1) stopReplay();
+            }, 50);
+        };
+
+        function formatTime(timeInMS) {
+            let seconds = Math.max(0, Math.floor(timeInMS / 1000));
+            const days = Math.floor(seconds / 86400);
+            seconds %= 86400;
+            const hours = Math.floor(seconds / 3600);
+            seconds %= 3600;
+            const minutes = Math.floor(seconds / 60);
+            seconds %= 60;
+
+            const parts = [];
+            if (days > 0) parts.push(`${days}d`);
+            if (hours > 0) parts.push(`${hours}h`);
+            if (minutes > 0 || hours > 0) parts.push(`${minutes}m`);
+            if (seconds > 0 || minutes > 0 || hours > 0) parts.push(`${seconds}s`);
+            return parts.length ? parts.join(" ") : "0s";
+        }
+
+        function updateLiveStatus() {
+            const elapsed = lastUpdated === null
+                ? "Last updated: never"
+                : `Last updated ${formatTime(Date.now() - lastUpdated)} ago`;
+            document.getElementById("live-status").textContent =
+                isLive ? "LIVE - updates every 10s" : `OFFLINE - ${elapsed}`;
+        }
+
+        function renderGraph(graph) {
+
+            const scoreFormat = new Intl.NumberFormat("en-US", {
+                maximumSignificantDigits: 21
+            });
+            best = graph.nodes.reduce((best, node) =>
+                Number.isFinite(node.score) && (!best || node.score > best.score)
+                    ? node : best, null);
+            const parents = new Map(graph.edges.map(edge => [edge.to, edge.from]));
+            const roots = graph.nodes.filter(node => !parents.has(node.id));
+            const baseline = roots.length === 1 ? roots[0] : null;
+            const ratio = best && baseline && baseline.score !== 0
+                ? best.score / baseline.score : NaN;
+            const comparison = Number.isFinite(ratio)
+                ? ` (${ratio.toFixed(2)}× baseline)` : "";
+            const attempts = graph.nodes.length - roots.length;
+            const parentsExplored = new Set(graph.edges.map(edge => edge.from)).size;
+            document.getElementById("summary").textContent = graph.nodes.length
+                ? `${attempts} attempts · ${best ? `best #${best.id}: ${best.score_label} score${comparison}` : "No scored candidates"} · ${parentsExplored} parents explored`
+                : "Waiting for the first candidate";
+            const bestPath = new Set();
+            let ancestor = best?.id;
+            while (ancestor !== undefined && !bestPath.has(ancestor)) {
+                bestPath.add(ancestor);
+                ancestor = parents.get(ancestor);
+            }
+
+            const nextNodes = graph.nodes.map(node => {
+                const title = document.createElement("div");
+                const name = document.createElement("strong");
+                name.textContent = node.name;
+                const score = document.createElement("div");
+                score.textContent = `Score: ${scoreFormat.format(node.score)}`;
+                title.append(name, score);
+
+                const isBest = node.id === best?.id;
+                const onPath = bestPath.has(node.id);
+                return {
+                    id: node.id,
+                    level: node.level,
+                    label: `#${node.id} · ${node.score_label}`,
+                    title,
+                    shape: isBest ? "diamond" : "dot",
+                    size: isBest ? 19 : onPath ? 15 : 11,
+                    color: isBest ? "#fbbf24" : onPath ? "#34d399" : "#94a3b8"
+                };
+            });
+            const nextEdges = graph.edges.map(edge => ({
+                id: JSON.stringify([edge.from, edge.to]),
+                from: edge.from,
+                to: edge.to,
+                color: {
+                    color: bestPath.has(edge.to) ? "#34d399" : "#42536b",
+                    inherit: false
+                },
+                width: bestPath.has(edge.to) ? 4 : 1.5
+            }));
+
+            document.getElementById("fit").disabled = graph.nodes.length === 0;
+            document.getElementById("best").disabled = best === null;
+
+            if (network) {
+                const position = network.getViewPosition();
+                const scale = network.getScale();
+                const nodeIds = new Set(nextNodes.map(node => node.id));
+                const edgeIds = new Set(nextEdges.map(edge => edge.id));
+                edges.remove(edges.getIds().filter(id => !edgeIds.has(id)));
+                nodes.remove(nodes.getIds().filter(id => !nodeIds.has(id)));
+                nodes.update(nextNodes);
+                edges.update(nextEdges);
+                if (selectedNodeId !== null && nodeIds.has(selectedNodeId)) {
+                    network.selectNodes([selectedNodeId]);
+                } else {
+                    selectedNodeId = null;
+                    network.unselectAll();
+                }
+                network.moveTo({ position, scale, animation: false });
+                return;
+            }
+
+            nodes = new vis.DataSet(nextNodes);
+            edges = new vis.DataSet(nextEdges);
+            const data = {
+                nodes: nodes,
+                edges: edges
+            };
+
+            const options = {
+                layout: {
+                    hierarchical: {
+                        enabled: true,
+                        direction: "LR",
+                        levelSeparation: 230,
+                        nodeSpacing: 100,
+                        sortMethod: "directed"
+                    }
+                },
+
+                physics: false,
+
+                nodes: {
+                    shape: "dot",
+                    size: 11,
+                    color: "#94a3b8",
+                    borderWidth: 2,
+                    font: {
+                        color: "#e2e8f0",
+                        size: 16
+                    }
+                },
+
+                edges: {
+                    arrows: "to",
+                    color: { color: "#42536b", inherit: false },
+                    width: 1.5,
+                    smooth: {
+                        enabled: true,
+                        type: "cubicBezier",
+                        forceDirection: "horizontal"
+                    }
+                },
+
+                interaction: {
+                    hover: true
+                }
+            };
+
+            network = new vis.Network(
+                document.getElementById("graph"),
+                data,
+                options
+            );
+
+            network.on("click", ({ nodes }) => {
+                const clickedNodeId = nodes[0];
+                if (clickedNodeId === undefined || clickedNodeId === selectedNodeId) {
+                    network.unselectAll();
+                    selectedNodeId = null;
+                } else {
+                    network.selectNodes([clickedNodeId]);
+                    selectedNodeId = clickedNodeId;
+                }
+            });
+
+            const fitButton = document.getElementById("fit");
+            const bestButton = document.getElementById("best");
+            fitButton.onclick = () => network.fit({ animation: true });
+            bestButton.onclick = () => {
+                if (!best) return;
+                network.selectNodes([best.id]);
+                selectedNodeId = best.id;
+                network.focus(best.id, {
+                    scale: 1,
+                    animation: { duration: 350 }
+                });
+            };
+        }
+
+        async function refreshGraph() {
+            try {
+                const response = await fetch("/api/graph", {
+                    cache: "no-store",
+                    signal: AbortSignal.timeout(10000)
+                });
+                if (!response.ok) throw new Error(`Graph request failed: ${response.status}`);
+                const graph = await response.json();
+                if (!Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
+                    throw new Error("Invalid graph response");
+                }
+                const snapshot = JSON.stringify(graph);
+                if (snapshot !== lastSnapshot) {
+                    receiveGraph(graph);
+                    lastSnapshot = snapshot;
+                }
+                lastUpdated = Date.now();
+                isLive = true;
+            } catch {
+                isLive = false;
+                // Keep the last successful graph and retry without interrupting navigation.
+                if (!network) {
+                    document.getElementById("summary").textContent = "Waiting for server…";
+                }
+            } finally {
+                updateLiveStatus();
+                // Schedule after completion so slow requests never overlap.
+                setTimeout(refreshGraph, 10000);
+            }
+        }
+
+        setInterval(updateLiveStatus, 1000);
+        refreshGraph();
+    </script>
+</body>
+</html>

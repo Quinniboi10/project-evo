@@ -30,4 +30,4 @@ Arguments
 where the boolean represents if the test succeeded, and the float represents the score (greater than 0) of the workspace  
 ***EVALUATE SHOULD BE NONDESTRICTUVE AS IT WILL BE CALLED ON THE PROJECT ROOT DIRECTORY TO ESTABLISH A BASELINE***
 
-While all code in this repository is built around LLMs, the code itself was written entirely by me
+While all code in this repository is built around LLMs, the core code itself was written entirely by me. LLMs did chip in for the HTML end of the dashboard since I cannot effectively write HTML.
