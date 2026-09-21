@@ -57,6 +57,8 @@ class Config:
         self.iterations                                    = self.args.iterations
         self.db_file                                       = Path(self.args.db if self.args.db is not None else f"./playground/databases/{round(time.time())}.db")
 
+        self.gnhf: bool = self.args.gnhf
+
         self.softmax_temp     = float(self.config["general"]["temperature"])
         self.concurrency      = int(self.config["general"]["concurrency"])
         self.max_fix_attempts = int(self.config["general"]["max_fix_attempts"])

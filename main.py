@@ -5,7 +5,7 @@ import config
 import git
 import llm
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, wait
 from uuid import uuid7
 
 import argparse
@@ -39,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-i", "--iterations", help="Number of iterations to run", metavar="int", type=int, required=True)
     parser.add_argument("--db", help="Path to a database file to begin/resume from. Only run this on trusted databases to avoid command injections", metavar="PATH", default=None)
     parser.add_argument("--logfile", help="Path to log to", metavar="PATH", default="project-evo.log")
+    parser.add_argument("--gnhf", help="Short for \"good night have fun\". Agents will keep working and errors are logged but do not terminate work", action="store_true")
     parser.add_argument("--debug", help="Enable debug-level logging", action="store_true")
  
     return parser
@@ -98,20 +99,28 @@ def run_worker():
 
 def run_iterations():
     with ThreadPoolExecutor(max_workers=config.cfg.concurrency) as pool:
-        futures = [
+        pending = [
             pool.submit(run_worker)
             for _ in range(config.cfg.iterations)
         ]
 
-        for future in tqdm(as_completed(futures), total=len(futures), dynamic_ncols=True):
-            try:
-                result = future.result()
-            except BaseException as e:
-                logging.log(logging.ERROR, f"A worker raised {type(e)}. {e}")
-                print(f"A worker raised {type(e)}. Exiting...")
-                logging.log(logging.WARNING, "Cancelling future threads and waiting for pool shutdown")
-                pool.shutdown(wait=True, cancel_futures=True)
-                break
+        with tqdm(total=config.cfg.iterations) as pbar:
+            while len(pending) > 0: # TODO: TQDM-ify
+                done, pending = wait(pending, return_when="FIRST_COMPLETED")
+
+                for future in done:
+                    try:
+                        result = future.result()
+                        pbar.update(1)
+                    except BaseException as e:
+                        logging.log(logging.ERROR, f"A worker raised {type(e)}. {e}")
+                        if config.cfg.gnhf:
+                            pending.add(pool.submit(run_worker)) # Add a new worker to replace the dead one
+                        else:
+                            print(f"A worker raised {type(e)}. Exiting...")
+                            logging.log(logging.WARNING, "Cancelling future threads and waiting for pool shutdown")
+                            pool.shutdown(wait=True, cancel_futures=True)
+                            return
 
 if __name__ == "__main__":
     config.cfg = config.Config(build_parser().parse_args())
