@@ -34,7 +34,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
                     prog=version_string,
                     description="MCTS-inspired code improvement using LLMs")
-    parser.add_argument("--db", help="Path to a database file to begin/resume from. Only run this on trusted databases to avoid command injections", metavar="PATH", required=True)
+    parser.add_argument("--db", help="Path to a database file to visualize", metavar="PATH", required=True)
+    parser.add_argument("-f", "--format", help="Format to export", metavar="TYPE", default="svg")
  
     return parser
 
@@ -43,7 +44,7 @@ if __name__ == "__main__":
     db = Database(args.db, PrimaryTableRow, require_exist=True)
 
     graph = graphviz.Digraph("Exploration diagram", comment="Project Evo")
-    graph.attr(rankdir='LR')
+    graph.attr(rankdir='LR', concentrate='true')
 
     id_to_score: dict[int, float] = {}
 
@@ -78,4 +79,4 @@ if __name__ == "__main__":
         if parent_id is not None:
             graph.edge(str(parent_id), str(id), label=task)
 
-    graph.render('./visualization', cleanup=True, view=False, format="svg", engine="dot")
+    graph.render('./visualization', cleanup=True, view=False, format=args.format, engine="dot")

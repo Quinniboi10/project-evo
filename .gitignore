@@ -1,4 +1,12 @@
+# Python stuff
 __pycache__/
 .venv/
+
+# Experiments and stuff
 playground/
+
+# Main log file
 *.log
+
+# Visualizations
+visualization.*
