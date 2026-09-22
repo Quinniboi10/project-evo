@@ -298,6 +298,7 @@
                 return;
             }
             if (fullGraph.nodes.length < 2) return;
+            hidePopup();
             step.value = 0;
             showAttempt();
             replayButton.textContent = "Pause";
@@ -399,6 +400,8 @@
             if (network) {
                 const position = network.getViewPosition();
                 const scale = network.getScale();
+                const rootBefore = baseline && nodes.get(baseline.id)
+                    ? network.getPositions([baseline.id])[baseline.id] : null;
                 const nodeIds = new Set(nextNodes.map(node => node.id));
                 const edgeIds = new Set(nextEdges.map(edge => edge.id));
                 edges.remove(edges.getIds().filter(id => !edgeIds.has(id)));
@@ -408,6 +411,12 @@
                 if (!nodeIds.has(selectedNodeId)) selectedNodeId = null;
                 if (!nodeIds.has(hoveredNodeId)) hidePopup();
                 updateSelection();
+                if (rootBefore) {
+                    // Let the visible tree reflow, but keep its root at the same screen pixel.
+                    const rootAfter = network.getPositions([baseline.id])[baseline.id];
+                    position.x += rootAfter.x - rootBefore.x;
+                    position.y += rootAfter.y - rootBefore.y;
+                }
                 network.moveTo({ position, scale, animation: false });
                 return;
             }
