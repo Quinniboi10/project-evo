@@ -59,7 +59,9 @@
             min-height: 0;
         }
 
-        div.vis-tooltip {
+        #node-popup {
+            position: fixed;
+            z-index: 10;
             max-width: min(360px, calc(100vw - 32px));
             white-space: normal;
             overflow-wrap: anywhere;
@@ -69,8 +71,14 @@
             border: 1px solid #51627a;
             border-radius: 6px;
             font: 14px/1.5 system-ui, sans-serif;
-            pointer-events: none;
+            box-shadow: 0 8px 24px #0006;
         }
+        #node-popup button { margin-top: 8px; }
+        dialog { width: min(800px, calc(100vw - 64px)); max-height: 80vh; background: #182233; color: #e2e8f0; border: 1px solid #51627a; border-radius: 8px; }
+        dialog::backdrop { background: #0008; }
+        .dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        .dialog-heading h2 { margin: 0; font-size: 20px; }
+        #row-values { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 monospace; }
     </style>
 </head>
 
@@ -94,12 +102,27 @@
     </header>
     <div id="graph"></div>
 
+    <div id="node-popup" hidden>
+        <strong id="popup-name"></strong>
+        <div id="popup-score"></div>
+        <button id="show-row" type="button">Show all values</button>
+    </div>
+    <dialog id="row-dialog" aria-labelledby="row-heading">
+        <div class="dialog-heading">
+            <h2 id="row-heading">Row data</h2>
+            <button id="close-row" type="button">Close</button>
+        </div>
+        <pre id="row-values" aria-live="polite"></pre>
+        <button id="retry-row" type="button" hidden>Retry</button>
+    </dialog>
+
     <script>
         let network = null;
         let nodes;
         let edges;
         let best = null;
         let selectedNodeId = null;
+        let hoveredNodeId = null;
         let lastSnapshot = null;
         let lastUpdated = null;
         let isLive = false;
@@ -108,6 +131,125 @@
         let replayTimer = null;
         const step = document.getElementById("step");
         const replayButton = document.getElementById("replay");
+
+        const popup = document.getElementById("node-popup");
+        const rowDialog = document.getElementById("row-dialog");
+        let popupNodeId = null;
+        let popupTimer = null;
+        let rowRequest = null;
+        let rowId = null;
+
+        function hidePopup() {
+            clearTimeout(popupTimer);
+            popup.hidden = true;
+            popupNodeId = null;
+            hoveredNodeId = null;
+            if (network) updateSelection();
+        }
+
+        function schedulePopupHide() {
+            clearTimeout(popupTimer);
+            popupTimer = setTimeout(() => {
+                if (!popup.matches(":hover") && !popup.contains(document.activeElement)) hidePopup();
+            }, 350);
+        }
+
+        function showPopup(id, point) {
+            const node = fullGraph.nodes.find(node => node.id === id);
+            if (!node) return;
+            clearTimeout(popupTimer);
+            popupNodeId = id;
+            document.getElementById("popup-name").textContent = `#${id} · ${node.name}`;
+            document.getElementById("popup-score").textContent = `Score: ${node.score.toLocaleString("en-US", { maximumSignificantDigits: 21 })}`;
+            popup.hidden = false;
+            const bounds = document.getElementById("graph").getBoundingClientRect();
+            const x = bounds.left + point.x;
+            const y = bounds.top + point.y;
+            popup.style.left = `${Math.max(8, Math.min(x + 14, innerWidth - popup.offsetWidth - 8))}px`;
+            popup.style.top = `${Math.max(8, Math.min(y + 14, innerHeight - popup.offsetHeight - 8))}px`;
+        }
+
+        popup.addEventListener("mouseenter", () => clearTimeout(popupTimer));
+        popup.addEventListener("mouseleave", schedulePopupHide);
+        popup.addEventListener("focusin", () => clearTimeout(popupTimer));
+        popup.addEventListener("focusout", schedulePopupHide);
+        window.addEventListener("resize", hidePopup);
+        document.addEventListener("keydown", event => {
+            if (event.key === "Escape") hidePopup();
+        });
+
+        async function loadRow(id) {
+            rowRequest?.abort();
+            const request = new AbortController();
+            rowRequest = request;
+            const timeout = setTimeout(() => request.abort(), 10000);
+            const values = document.getElementById("row-values");
+            const retry = document.getElementById("retry-row");
+            values.textContent = "Loading…";
+            retry.hidden = true;
+            try {
+                const response = await fetch(`/api/row/${encodeURIComponent(id)}`, {
+                    cache: "no-store", signal: request.signal
+                });
+                if (!response.ok) throw new Error("Row request failed");
+                const row = await response.json();
+                if (rowRequest === request && rowDialog.open) {
+                    values.textContent = JSON.stringify(row, null, 2);
+                }
+            } catch {
+                if (rowRequest === request && rowDialog.open) {
+                    values.textContent = "Could not load this row. Please try again.";
+                    retry.hidden = false;
+                }
+            } finally {
+                clearTimeout(timeout);
+            }
+        }
+
+        document.getElementById("show-row").onclick = () => {
+            if (popupNodeId === null) return;
+            rowId = popupNodeId;
+            hidePopup();
+            document.getElementById("row-heading").textContent = `Row #${rowId} · All values`;
+            rowDialog.showModal();
+            loadRow(rowId);
+        };
+        document.getElementById("retry-row").onclick = () => loadRow(rowId);
+        document.getElementById("close-row").onclick = () => rowDialog.close();
+        rowDialog.addEventListener("close", () => {
+            rowRequest?.abort();
+            rowRequest = null;
+        });
+
+        function updateSelection() {
+            const activeNodeId = hoveredNodeId ?? selectedNodeId;
+            if (activeNodeId === null) {
+                network.unselectAll();
+                return;
+            }
+            const visibleEdges = edges.get();
+            const parents = new Map(visibleEdges.map(edge => [edge.to, edge]));
+            const highlightedNodes = new Set([activeNodeId]);
+            const highlightedEdges = new Set();
+            let ancestor = activeNodeId;
+            while (parents.has(ancestor)) {
+                const edge = parents.get(ancestor);
+                if (highlightedNodes.has(edge.from)) break;
+                highlightedEdges.add(edge.id);
+                highlightedNodes.add(edge.from);
+                ancestor = edge.from;
+            }
+            for (const edge of visibleEdges) {
+                if (edge.from === activeNodeId) {
+                    highlightedNodes.add(edge.to);
+                    highlightedEdges.add(edge.id);
+                }
+            }
+            network.setSelection({
+                nodes: [...highlightedNodes],
+                edges: [...highlightedEdges]
+            }, { highlightEdges: false });
+        }
 
         function showAttempt() {
             const visibleNodes = fullGraph.nodes.slice(0, Number(step.value) + 1);
@@ -206,9 +348,6 @@
 
         function renderGraph(graph) {
 
-            const scoreFormat = new Intl.NumberFormat("en-US", {
-                maximumSignificantDigits: 21
-            });
             best = graph.nodes.reduce((best, node) =>
                 Number.isFinite(node.score) && (!best || node.score > best.score)
                     ? node : best, null);
@@ -232,20 +371,12 @@
             }
 
             const nextNodes = graph.nodes.map(node => {
-                const title = document.createElement("div");
-                const name = document.createElement("strong");
-                name.textContent = node.name;
-                const score = document.createElement("div");
-                score.textContent = `Score: ${scoreFormat.format(node.score)}`;
-                title.append(name, score);
-
                 const isBest = node.id === best?.id;
                 const onPath = bestPath.has(node.id);
                 return {
                     id: node.id,
                     level: node.level,
                     label: `#${node.id} · ${node.score_label}`,
-                    title,
                     shape: isBest ? "diamond" : "dot",
                     size: isBest ? 19 : onPath ? 15 : 11,
                     color: isBest ? "#fbbf24" : onPath ? "#34d399" : "#94a3b8"
@@ -274,12 +405,9 @@
                 nodes.remove(nodes.getIds().filter(id => !nodeIds.has(id)));
                 nodes.update(nextNodes);
                 edges.update(nextEdges);
-                if (selectedNodeId !== null && nodeIds.has(selectedNodeId)) {
-                    network.selectNodes([selectedNodeId]);
-                } else {
-                    selectedNodeId = null;
-                    network.unselectAll();
-                }
+                if (!nodeIds.has(selectedNodeId)) selectedNodeId = null;
+                if (!nodeIds.has(hoveredNodeId)) hidePopup();
+                updateSelection();
                 network.moveTo({ position, scale, animation: false });
                 return;
             }
@@ -309,6 +437,17 @@
                     size: 11,
                     color: "#94a3b8",
                     borderWidth: 2,
+                    borderWidthSelected: 2,
+                    chosen: {
+                        node(values, id, selected, hovering) {
+                            if (selected || hovering) {
+                                values.color = "#c7d2fe";
+                                values.borderColor = "#e2e8f0";
+                                if (hoveredNodeId !== null) values.size += 2;
+                            }
+                        },
+                        label: false
+                    },
                     font: {
                         color: "#e2e8f0",
                         size: 16
@@ -337,15 +476,23 @@
                 options
             );
 
-            network.on("click", ({ nodes }) => {
-                const clickedNodeId = nodes[0];
+            network.on("hoverNode", ({ node, pointer }) => {
+                hoveredNodeId = node;
+                updateSelection();
+                showPopup(node, pointer.DOM);
+            });
+            network.on("blurNode", schedulePopupHide);
+            network.on("dragStart", hidePopup);
+            network.on("zoom", hidePopup);
+            network.on("click", ({ pointer }) => {
+                const clickedNodeId = network.getNodeAt(pointer.DOM);
+                hidePopup();
                 if (clickedNodeId === undefined || clickedNodeId === selectedNodeId) {
-                    network.unselectAll();
                     selectedNodeId = null;
                 } else {
-                    network.selectNodes([clickedNodeId]);
                     selectedNodeId = clickedNodeId;
                 }
+                updateSelection();
             });
 
             const fitButton = document.getElementById("fit");
@@ -353,8 +500,9 @@
             fitButton.onclick = () => network.fit({ animation: true });
             bestButton.onclick = () => {
                 if (!best) return;
-                network.selectNodes([best.id]);
+                hoveredNodeId = null;
                 selectedNodeId = best.id;
+                updateSelection();
                 network.focus(best.id, {
                     scale: 1,
                     animation: { duration: 350 }

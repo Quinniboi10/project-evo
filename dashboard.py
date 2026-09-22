@@ -58,6 +58,17 @@ def calculate_node_depth(db: Database, id: int) -> int:
 
     return node_depth_cache[id]
 
+@app.get("/api/row/<id>")
+def row_data(id: int):
+    db = Database(DB_FILE, PrimaryTableRow, True)
+    match = db.select(f"SELECT * FROM {db.PRIMARY_TABLE} WHERE id = {id};")[0]
+
+    row: dict[str, object] = {}
+    for col, val in zip(db.cursor.description, match):
+        row[col[0]] = val
+
+    return jsonify(row)
+
 @app.get("/api/graph")
 def graph_data():
     # Each call needs its own thread-local database connection
