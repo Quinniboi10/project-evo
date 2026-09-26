@@ -1,0 +1,111 @@
+from database import Database, PrimaryTableRow
+from error import DatabaseException
+from task import Task
+import dashboard
+
+from pathlib import Path
+from unittest.mock import patch
+from contextlib import closing
+
+import json
+import sqlite3
+import tempfile
+import unittest
+
+class DashboardTests(unittest.TestCase):
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory(prefix="evo-dashboard-")
+        self.addCleanup(temp.cleanup)
+        self.path = Path(temp.name) / "islands.db"
+        self.db = Database(self.path, PrimaryTableRow)
+        self.addCleanup(self.db.close)
+        self.db.init_islands(4)
+        self.baseline = PrimaryTableRow("Baseline", "base", None, None, None, 10)
+        self.db.insert_baseline(self.baseline)
+        context = patch.object(dashboard, "DB_FILE", self.path)
+        context.start()
+        self.addCleanup(context.stop)
+        self.client = dashboard.app.test_client()
+
+    def attempt(self, island: int, score: float, references: list[int]|None=None):
+        row = PrimaryTableRow.create_new_child(self.baseline, Task.IMPROVE)
+        row.score = score
+        self.db.insert_attempt(row, island, references)
+        return row
+
+    def test_graph_and_row_metadata(self):
+        historical = self.attempt(0, 20)
+        recorded = self.attempt(1, 20, [])
+        assert historical.id is not None and recorded.id is not None
+        inspired = self.attempt(2, 30, [recorded.id, historical.id])
+        graph = self.client.get("/api/graph").get_json()
+        self.assertEqual(graph["islands"], [0, 1, 2, 3])
+        self.assertEqual(graph["nodes"][0]["island_ids"], [0, 1, 2, 3])
+        self.assertIsNone(graph["nodes"][1]["inspiration_ids"])
+        self.assertEqual(graph["nodes"][2]["inspiration_ids"], [])
+        self.assertEqual(graph["nodes"][3]["inspiration_ids"], [recorded.id, historical.id])
+        self.assertEqual([node["level"] for node in graph["nodes"]], [0, 1, 1, 1])
+        self.assertEqual([edge["from"] for edge in graph["edges"]], [self.baseline.id] * 3)
+        row = self.client.get(f"/api/row/{inspired.id}").get_json()
+        self.assertEqual(row["island_ids"], [2])
+        self.assertEqual(row["inspiration_ids"], [recorded.id, historical.id])
+        self.assertEqual(row["parent_id"], self.baseline.id)
+        self.assertEqual(self.client.get("/api/row/999").status_code, 404)
+        self.assertEqual(self.client.get("/api/row/not-an-id").status_code, 404)
+
+    def test_additive_upgrade_and_read_only_legacy_view(self):
+        child = self.attempt(0, 20)
+        self.db.cursor.execute("DROP TABLE attempt_inspirations")
+        self.db.db.commit()
+        before = self.path.read_bytes()
+        graph = self.client.get("/api/graph").get_json()
+        self.assertIsNone(graph["nodes"][1]["inspiration_ids"])
+        self.assertEqual(self.path.read_bytes(), before)
+        with closing(Database(self.path, PrimaryTableRow)) as resumed:
+            resumed.init_islands(4)
+            self.assertEqual(resumed.select("SELECT * FROM attempt_inspirations"), [])
+        self.assertIsNone(self.client.get(f"/api/row/{child.id}").get_json()["inspiration_ids"])
+        self.db.cursor.execute("DROP TABLE island_membership")
+        self.db.cursor.execute("DROP TABLE island_settings")
+        self.db.db.commit()
+        before = self.path.read_bytes()
+        graph = self.client.get("/api/graph").get_json()
+        self.assertEqual(graph["islands"], [])
+        self.assertEqual(graph["nodes"][1]["island_ids"], [])
+        self.assertEqual(self.path.read_bytes(), before)
+        with dashboard.read_snapshot() as db:
+            with self.assertRaises(sqlite3.OperationalError):
+                db.execute("DELETE FROM evolve")
+
+    def test_provenance_atomicity_and_validation(self):
+        reference = self.attempt(0, 20)
+        assert reference.id is not None
+        for references in ([999], [reference.id, reference.id], [1]):
+            with self.assertRaises(DatabaseException):
+                self.attempt(1, 30, references)
+        self.assertEqual(self.db.select("SELECT COUNT(*) FROM evolve"), [(2,)])
+        self.db.cursor.execute("CREATE TRIGGER reject_provenance BEFORE INSERT ON attempt_inspirations BEGIN SELECT RAISE(ABORT, 'rollback'); END")
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.attempt(1, 30, [reference.id])
+        self.assertEqual(self.db.select("SELECT COUNT(*) FROM evolve"), [(2,)])
+        self.assertEqual(self.db.select("SELECT COUNT(*) FROM island_membership"), [(5,)])
+        self.db.cursor.execute("DROP TRIGGER reject_provenance")
+        child = self.attempt(1, 30, [reference.id])
+        stored = self.db.cursor.execute("SELECT reference_ids FROM attempt_inspirations WHERE attempt_id = ?", (child.id,)).fetchone()
+        self.assertEqual(json.loads(stored[0]), [reference.id])
+
+    def test_deep_tree_and_snapshot_local_depths(self):
+        parent = self.baseline
+        for _ in range(1050):
+            row = PrimaryTableRow.create_new_child(parent, Task.IMPROVE)
+            row.score = 10
+            self.db.insert_attempt(row, 0, [])
+            parent = row
+        graph = self.client.get("/api/graph").get_json()
+        self.assertEqual(graph["nodes"][-1]["level"], 1050)
+        self.db.cursor.execute("UPDATE evolve SET parent_id = 1 WHERE id = ?", (parent.id,))
+        self.db.db.commit()
+        self.assertEqual(self.client.get("/api/graph").get_json()["nodes"][-1]["level"], 1)
+
+if __name__ == "__main__":
+    unittest.main()

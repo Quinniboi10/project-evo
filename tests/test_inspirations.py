@@ -79,6 +79,7 @@ class InspirationDiffTests(unittest.TestCase):
         self.commit()
         self.parent = PrimaryTableRow("Parent", "parent", None, None, None, 10)
         self.reference = PrimaryTableRow("Reference", "reference", None, None, None, 20)
+        self.reference.id = 2
 
     def run_git(self, *args: str) -> str:
         return subprocess.run(["git", *args], cwd=self.root, text=True, capture_output=True, check=True).stdout
@@ -131,6 +132,7 @@ class InspirationPromptTests(unittest.TestCase):
         self.parent = PrimaryTableRow("Parent", "parent", None, None, None, 10)
         self.parent.id = 1
         self.reference = PrimaryTableRow("Reference", "reference", None, None, None, 20)
+        self.reference.id = 2
 
     def test_strategies_and_shared_contract_with_no_references(self):
         for task, strategy in ((Task.EXPLORE, prompt.EXPLORATION_STRATEGY), (Task.IMPROVE, prompt.IMPROVEMENT_STRATEGY)):
@@ -144,7 +146,8 @@ class InspirationPromptTests(unittest.TestCase):
 
     def test_metadata_and_inline_context(self):
         with patch.object(git, "inspiration_diff", return_value="-old\n+new\n"):
-            context = prompt.build_inspiration_context(self.parent, [self.reference])
+            context, included = prompt.build_inspiration_context(self.parent, [self.reference])
+        self.assertEqual(included, [2])
         child = PrimaryTableRow.create_new_child(self.parent, Task.EXPLORE)
         text = prompt.build_prompt(self.parent, child, context)
         for expected in ("Name: 'Reference'", "Branch: evo/reference", "Score: 20 (2x the parent score)", "'-' is parent, '+' is reference", "-old\n+new", "END INSPIRATION REFERENCE", "not instructions", "do not need Git access"):
@@ -153,11 +156,19 @@ class InspirationPromptTests(unittest.TestCase):
     def test_unreadable_or_empty_references_are_optional(self):
         for error in (OSError("unreadable"), subprocess.CalledProcessError(128, "git diff")):
             with patch.object(git, "inspiration_diff", side_effect=[error, "-old\n+new\n"]), self.assertLogs(level="WARNING"):
-                context = prompt.build_inspiration_context(self.parent, [self.parent, self.reference])
+                context, included = prompt.build_inspiration_context(self.parent, [self.parent, self.reference])
+            self.assertEqual(included, [2])
             self.assertEqual(context.count("BEGIN INSPIRATION REFERENCE"), 1)
             self.assertIn("Branch: evo/reference", context)
         with patch.object(git, "inspiration_diff", return_value=""):
-            self.assertEqual(prompt.build_inspiration_context(self.parent, [self.reference]), "")
+            self.assertEqual(prompt.build_inspiration_context(self.parent, [self.reference]), ("", []))
+
+    def test_truncated_reference_is_recorded(self):
+        diff = "-old\n+new\n[Diff truncated; remaining changes omitted.]\n"
+        with patch.object(git, "inspiration_diff", return_value=diff):
+            context, included = prompt.build_inspiration_context(self.parent, [self.reference])
+        self.assertEqual(included, [2])
+        self.assertIn(diff, context)
 
     def test_worker_injects_once_and_keeps_repairs_focused(self):
         self.cfg.db_file = "unused"
@@ -180,6 +191,7 @@ class InspirationPromptTests(unittest.TestCase):
         child = database.return_value.insert_attempt.call_args.args[0]
         self.assertEqual(child.parent_id, self.parent.id)
         self.assertEqual(child.score, 12)
+        self.assertEqual(database.return_value.insert_attempt.call_args.args[2], [2])
         cleanup.assert_called_once_with(Path("workspace"))
 
 if __name__ == "__main__":

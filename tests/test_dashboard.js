@@ -1,0 +1,136 @@
+// Run with node tests/test_dashboard.js. Tests state transitions without a browser.
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const vm = require("node:vm");
+
+class Element {
+    constructor(tag = "div") {
+        this.tag = tag;
+        this.children = [];
+        this.dataset = {};
+        this.attributes = {};
+        this.style = { setProperty() {} };
+        this.value = "0";
+        this.max = "0";
+        this.hidden = false;
+        this.clientWidth = 1000;
+        this.clientHeight = 600;
+        this.offsetWidth = 200;
+        this.offsetHeight = 100;
+    }
+    get firstChild() { return this.children[0]; }
+    get lastChild() { return this.children.at(-1); }
+    append(...elements) { for (const element of elements) { element.parent = this; this.children.push(element); } }
+    replaceChildren(...elements) { this.children = []; this.append(...elements); }
+    setAttribute(key, value) { this.attributes[key] = value; }
+    addEventListener() {}
+    remove() { this.parent.children = this.parent.children.filter(child => child !== this); }
+    getBoundingClientRect() { return { left: 0, top: 0 }; }
+}
+
+class DataSet {
+    constructor(values) { this.data = new Map(values.map(value => [value.id, value])); }
+    get(id) { return id === undefined ? [...this.data.values()] : this.data.get(id); }
+    getIds() { return [...this.data.keys()]; }
+    update(values) { for (const value of values) this.data.set(value.id, value); }
+    remove(ids) { for (const id of ids) this.data.delete(id); }
+}
+
+class Network {
+    constructor() { this.handlers = {}; this.position = { x: 42, y: 17 }; this.scale = 0.8; }
+    on(event, handler) { this.handlers[event] = handler; }
+    getViewPosition() { return { ...this.position }; }
+    getScale() { return this.scale; }
+    getPositions(ids) { return Object.fromEntries(ids.map(id => [id, { x: id * 50, y: id * 20 }])); }
+    canvasToDOM(point) { return point; }
+    moveTo({ position, scale }) { this.position = position; this.scale = scale; }
+    unselectAll() {}
+    setSelection() {}
+    setOptions() {}
+    fit() {}
+    focus() {}
+}
+
+const elements = new Map();
+const document = {
+    getElementById(id) {
+        if (!elements.has(id)) elements.set(id, new Element());
+        return elements.get(id);
+    },
+    createElement: tag => new Element(tag),
+    createElementNS: (_, tag) => new Element(tag),
+    addEventListener() {}
+};
+const context = vm.createContext({
+    document, window: { addEventListener() {} }, vis: { DataSet, Network },
+    innerWidth: 1000, innerHeight: 700, setTimeout() {}, clearTimeout() {},
+    setInterval() {}, clearInterval() {}, AbortSignal, AbortController,
+    fetch: () => new Promise(() => {}), console, performance
+});
+const html = fs.readFileSync(`${__dirname}/../dashboard/index.html`, "utf8");
+vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context);
+const run = code => vm.runInContext(code, context);
+const result = code => JSON.parse(JSON.stringify(run(code)));
+const graph = {
+    islands: [0, 1, 2],
+    nodes: [
+        { id: 1, name: "Baseline", score: 10, score_label: "10", level: 0, island_ids: [0, 1, 2], inspiration_ids: null },
+        { id: 2, name: "Foreign", score: 15, score_label: "15", level: 1, island_ids: [1], inspiration_ids: [] },
+        { id: 3, name: "Local", score: 20, score_label: "20", level: 1, island_ids: [0], inspiration_ids: [2] }
+    ],
+    edges: [{ from: 1, to: 2 }, { from: 1, to: 3 }]
+};
+run(`receiveGraph(${JSON.stringify(graph)})`);
+assert.deepEqual(result("nodes.getIds()"), [1, 2, 3]);
+assert.equal(elements.get("island-overview").children.length, 4);
+assert.match(elements.get("island-overview").children[3].lastChild.textContent, /No successful attempts yet/);
+elements.get("island-overview").children[1].onclick();
+assert.deepEqual(result("nodes.getIds()"), [1, 3]);
+assert.equal(Number(run("step.value")), 2);
+assert.equal(run("best.id"), 3);
+const before = result("[nodes.get(), edges.get(), network.getViewPosition(), network.getScale()]");
+run("showPopup(3, {x: 150, y: 100})");
+assert.equal(elements.get("inspiration-overlay").children.filter(child => child.tag === "line").length, 1);
+assert.equal(elements.get("inspiration-overlay").children.find(child => child.tag === "g").attributes["data-reference-id"], "2");
+assert.deepEqual(result("[nodes.get(), edges.get(), network.getViewPosition(), network.getScale()]"), before);
+run("selectedNodeId = 3; hidePopup()");
+assert.equal(elements.get("inspiration-overlay").children.filter(child => child.tag === "line").length, 1);
+assert.equal(elements.get("inspiration-overlay").children.find(child => child.tag === "g").children.filter(child => child.tag === "circle").length, 1);
+run("showPopup(2, {x: 100, y: 40}); hidePopup()");
+assert.equal(elements.get("inspiration-overlay").children.filter(child => child.tag === "line").length, 1);
+run("selectedNodeId = null; updateSelection()");
+assert.equal(elements.get("inspiration-overlay").children.length, 0);
+run("step.value = 0; showAttempt()");
+assert.deepEqual(result("nodes.getIds()"), [1]);
+assert.equal(run("best.id"), 1);
+assert.match(elements.get("island-overview").children[1].lastChild.textContent, /best 10/);
+run("selectedIsland = null; step.value = 2; showAttempt(); showPopup(3, {x: 150, y: 100})");
+assert.equal(elements.get("inspiration-overlay").children.filter(child => child.tag === "g").length, 0);
+assert.equal(elements.get("inspiration-overlay").children.filter(child => child.tag === "circle").length, 1);
+const positionsBeforeReplay = result("[nodes.get(2).y, nodes.get(3).y]");
+assert.ok(positionsBeforeReplay[1] < positionsBeforeReplay[0]);
+run("step.value = 1; showAttempt(); step.value = 2; showAttempt(); showPopup(3, {x: 150, y: 100})");
+assert.deepEqual(result("[nodes.get(2).y, nodes.get(3).y]"), positionsBeforeReplay);
+assert.equal(elements.get("inspiration-overlay").children.filter(child => child.tag === "line").length, 1);
+run("showPopup(1, {x: 50, y: 20})");
+assert.equal(elements.get("popup-inspirations").textContent, "Inspiration history unavailable");
+run("showPopup(2, {x: 100, y: 40})");
+assert.equal(elements.get("popup-inspirations").textContent, "No inspiration references");
+const updated = structuredClone(graph);
+updated.nodes.push({ id: 4, name: "New", score: 30, score_label: "30", level: 2, island_ids: [0], inspiration_ids: [2] });
+updated.edges.push({ from: 3, to: 4 });
+run(`replayTimer = 1; receiveGraph(${JSON.stringify(updated)})`);
+assert.equal(run("fullGraph.nodes.length"), 3);
+run("stopReplay()");
+assert.equal(run("fullGraph.nodes.length"), 4);
+assert.equal(Number(run("step.value")), 3);
+run("step.value = 1; showAttempt()");
+run(`receiveGraph(${JSON.stringify(updated)})`);
+assert.equal(Number(run("step.value")), 1);
+assert.equal(run("network.getScale()"), 0.8);
+const legacy = structuredClone(graph);
+legacy.islands = [];
+for (const node of legacy.nodes) node.island_ids = [];
+run(`receiveGraph(${JSON.stringify(legacy)})`);
+assert.equal(elements.get("island-overview").hidden, true);
+console.log("Dashboard state tests passed: filters, replay, hover overlays, viewport, and legacy view");

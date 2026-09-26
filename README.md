@@ -46,6 +46,10 @@ Each attempt starts from one "parent" workspace. Exploration (30%) tries alterna
 - Island count is fixed when resuming a database; sharing probability may change. Pre-island databases cannot resume evolution; start a new database.
 - Scores and diffs are included directly in prompts, so agents need no Git access. Each attempt retains one parent.
 
+### Dashboard
+
+Run `python3 dashboard.py --db PATH` to view the ancestry tree. Island cards filter the graph; replay keeps a global timeline. Hover or select an attempt to reveal its inspiration links; rings mark the sources, including temporary references from other islands.
+
 ### Smoke runs
 
 Run `python3 main.py --smoke -i 12 --debug` to check worktrees, commits, database storage, routing and logging without querying LLMs. Requires Git.

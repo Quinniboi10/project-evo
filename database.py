@@ -6,6 +6,7 @@ from typing import Optional, Self
 from pathlib import Path
 from uuid import uuid7
 
+import json
 import sqlite3
 import logging
 import random
@@ -114,6 +115,9 @@ class Database[Row: TableRow]():
         assert_db(stored == [(count,)], "Configured island_count must match the database island count")
         assert_db("island_membership" in tables or not self.already_exists, "Database lacks island membership; start with a new database")
 
+        with self.db:
+            self.cursor.execute("CREATE TABLE IF NOT EXISTS attempt_inspirations (attempt_id INTEGER PRIMARY KEY, reference_ids TEXT NOT NULL)")
+
     def insert_baseline(self, row: PrimaryTableRow):
         with self.db:
             assert_db(not self.select(f"SELECT id FROM {self.PRIMARY_TABLE} LIMIT 1"), "Baseline requires an empty database")
@@ -123,7 +127,7 @@ class Database[Row: TableRow]():
             self.cursor.executemany("INSERT INTO island_membership VALUES (?, ?)", [(i, attempt_id) for i in range(count)])
         row.id = attempt_id
 
-    def insert_attempt(self, row: PrimaryTableRow, island_id: int):
+    def insert_attempt(self, row: PrimaryTableRow, island_id: int, reference_ids: list[int]|None=None):
         with self.db:
             # The parent membership also validates the destination island.
             parent = self.cursor.execute("SELECT 1 FROM island_membership WHERE island_id = ? AND attempt_id = ?", (island_id, row.parent_id)).fetchone()
@@ -131,6 +135,12 @@ class Database[Row: TableRow]():
             self.cursor.execute(f"INSERT INTO {self.PRIMARY_TABLE} VALUES ({', '.join(['?'] * len(row))})", row)
             attempt_id = self.cursor.lastrowid
             self.cursor.execute("INSERT INTO island_membership VALUES (?, ?)", (island_id, attempt_id))
+            if reference_ids is not None:
+                assert_db(len(set(reference_ids)) == len(reference_ids), "Inspiration references must be unique")
+                for reference_id in reference_ids:
+                    reference = self.cursor.execute(f"SELECT id FROM {self.PRIMARY_TABLE} WHERE id = ? AND id < ?", (reference_id, attempt_id)).fetchone()
+                    assert_db(reference is not None and reference_id != row.parent_id, "Inspiration must reference an existing alternative attempt")
+                self.cursor.execute("INSERT INTO attempt_inspirations VALUES (?, ?)", (attempt_id, json.dumps(reference_ids)))
         row.id = attempt_id
 
     def insert(self, new_rows: TableRow|list[TableRow]):

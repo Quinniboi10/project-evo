@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 random.seed(42)
 
-version_string = f"Project Evo 1.2.0"
+version_string = f"Project Evo 1.3.1"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -86,7 +86,7 @@ def run_worker(island_id: int):
         try:
             references = db.sample_inspirations(parent, config.cfg.inspiration_count, island_id, config.cfg.cross_island_inspiration_probability)
             logging.log(logging.INFO, f"Island {island_id} attempt {child.uuid}, parent {parent.uuid}, inspirations {[row.uuid for row in references]}")
-            inspirations = build_inspiration_context(parent, references)
+            inspirations, reference_ids = build_inspiration_context(parent, references)
             prompt = build_prompt(parent, child, inspirations)
             child.model = llm.route_prompt(workspace, prompt, task)
 
@@ -109,7 +109,7 @@ def run_worker(island_id: int):
 
             child.name = llm.get_attempt_name(workspace)
 
-            db.insert_attempt(child, island_id)
+            db.insert_attempt(child, island_id, reference_ids)
         finally:
             git.delete_workspace(workspace)
 

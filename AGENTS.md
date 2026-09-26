@@ -73,7 +73,9 @@ configuration is currently checked in.
   routine changes. Its style is separate from the handwritten Python core.
 
 Style matching does not require reproducing typos, bugs or unsafe behavior.
-Keep functional fixes focused and avoid unrelated cleanup.
+Keep diffs short and change scope tight. Change only what is needed for the
+requested behavior and its necessary tests and documentation. Preserve unrelated
+behavior; avoid incidental refactors, cleanup, formatting changes or added features.
 
 Always keep `README.md` edits short and concise, matching the rest of the file.
 Include essential usage and configuration details; avoid implementation walkthroughs.
