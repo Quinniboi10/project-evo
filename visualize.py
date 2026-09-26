@@ -1,34 +1,11 @@
-from main import version_string
+from version import version_string
+from utils import abbreviate_score
 
 from database import Database, PrimaryTableRow
 
 import argparse
-import math
 
 import graphviz
-
-def abbreviate_score(score: float) -> str:
-    leading_digits = math.floor(math.log10(score)) + 1
-    # For scores less than 1, switch to scientific notation
-    if leading_digits < 1:
-        return f"{score:.3e}"
-    # Calculate target precision
-    leading_chars = (leading_digits - 1) % 3 + 1
-    prec = 4 - leading_chars
-    # Sort and return
-    # (n digits, suffix)
-    abbrs = sorted([
-        (12, 'T'),
-        (9, 'B'),
-        (6, 'M'),
-        (3, 'K'),
-    ], key=lambda a: a[0], reverse=True)
-    for dig, suffix in abbrs:
-        if leading_digits > dig:
-            return f"{score/10**dig:.{prec}f}{suffix}"
-
-    # Degrade instead of erroring
-    return f"{score:.{prec}f}"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(

@@ -94,7 +94,7 @@ Include essential usage and configuration details; avoid implementation walkthro
 - Preserve CLI arguments, output contracts, configuration keys and database
   compatibility unless the task requires changes; update relevant documentation
   and examples when those interfaces change.
-- Increment `version_string` in `main.py` when changing functionality: bump the
+- Increment `version_string` in `version.py` when changing functionality: bump the
   last component for bug fixes, middle component for intermediate features or
   improvements, and major component only for huge features or fundamental project
   advances (think `torch.compile`). A compatibility break alone does not require a

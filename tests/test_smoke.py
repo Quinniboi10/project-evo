@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from contextlib import closing
+from concurrent.futures import Future
 
 import unittest
 import subprocess
@@ -224,6 +225,21 @@ class RoutingTests(unittest.TestCase):
             mock.assert_called_once()
         self.query.assert_not_called()
 
+    def test_adapter_lookup_failure_releases_provider(self):
+        adapter = Mock(side_effect=KeyError("missing adapter"))
+        self.cfg.adapter = adapter
+        with self.assertRaisesRegex(KeyError, "missing adapter"):
+            llm.route_prompt(Path("workspace"), "prompt", Task.IMPROVE)
+        self.assertEqual(llm.running_processes["improve"], 0)
+        self.query.assert_not_called()
+        self.autocommit.assert_called_once_with(Path("workspace"))
+
+    def test_commit_failure_still_releases_provider(self):
+        self.autocommit.side_effect = KillWorkerException("commit failed")
+        with self.assertRaisesRegex(KillWorkerException, "commit failed"):
+            llm.route_prompt(Path("workspace"), "prompt", Task.IMPROVE)
+        self.assertEqual(llm.running_processes["improve"], 0)
+
     def test_agent_requirements_are_skipped_only_in_smoke_mode(self):
         self.cfg.models = {"improve"}
         with patch("shutil.which", side_effect=lambda name: "/usr/bin/git" if name == "git" else None):
@@ -233,6 +249,22 @@ class RoutingTests(unittest.TestCase):
                 main.check_requirements()
 
 class WorkerFailureTests(unittest.TestCase):
+    def test_terminal_failure_cancels_queued_work_and_waits(self):
+        for error in (KillPoolException, KeyboardInterrupt):
+            with self.subTest(error=error):
+                failed: Future[None] = Future()
+                failed.set_exception(error("stop"))
+                queued: Future[None] = Future()
+                submit = Mock(side_effect=[failed, queued])
+                shutdown = Mock(side_effect=lambda **kwargs: queued.cancel() if kwargs["cancel_futures"] else None)
+                pool = SimpleNamespace(submit=submit, shutdown=shutdown)
+                cfg = SimpleNamespace(concurrency=2, iterations=4, gnhf=False)
+                with patch.object(config, "cfg", cfg), patch.object(main, "ThreadPoolExecutor", return_value=pool), patch.object(main, "select_island", return_value=0), patch.object(main, "wait", return_value=({failed}, {queued})):
+                    self.assertEqual(main.run_iterations(), 0 if error is KeyboardInterrupt else 1)
+                self.assertEqual(submit.call_count, 2)
+                shutdown.assert_called_once_with(wait=True, cancel_futures=True)
+                self.assertTrue(queued.cancelled())
+
     def test_pool_failures_and_replacement(self):
         for gnhf, error, expected in ((False, KillWorkerException, 1), (True, KillWorkerException, 0), (False, KillPoolException, 1), (True, KillPoolException, 1), (True, RuntimeError, 1), (False, KeyboardInterrupt, 0)):
             with self.subTest(gnhf=gnhf, error=error):

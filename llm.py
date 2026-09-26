@@ -43,12 +43,11 @@ def route_prompt(workspace: Path, prompt: str, task: Task) -> str:
         
         running_processes[model] = running_processes.get(model, 0) + 1
 
-    adapter = config.cfg.adapter(model)
-
-    logging.log(logging.INFO, f"Starting {adapter}/{model} in {str(workspace)}")
-    logging.log(logging.DEBUG, f"OUTBOUND: {prompt}")
-
     try:
+        adapter = config.cfg.adapter(model)
+        logging.log(logging.INFO, f"Starting {adapter}/{model} in {str(workspace)}")
+        logging.log(logging.DEBUG, f"OUTBOUND: {prompt}")
+
         args = workspace, config.cfg.model_full_name(model), prompt, config.cfg.extra_args(model)
         if config.cfg.args.smoke and adapter in ("codex", "opencode"):
             result = config.cfg.args.smoke_session.query(*args)
@@ -61,12 +60,10 @@ def route_prompt(workspace: Path, prompt: str, task: Task) -> str:
 
         if result.returncode != 0:
             logging.log(logging.ERROR, f"{adapter}/{model} session returned non-zero exit code")
-            logging.log(logging.ERROR, f"INBOUND STDERR: {result.stderr}")
-            logging.log(logging.ERROR, f"INBOUND STDOUT: {result.stdout}")
-            result.check_returncode()
-        else:
-            logging.log(logging.DEBUG, f"INBOUND STDERR: {result.stderr}")
-            logging.log(logging.DEBUG, f"INBOUND STDOUT: {result.stdout}")
+        level = logging.ERROR if result.returncode != 0 else logging.DEBUG
+        logging.log(level, f"INBOUND STDERR: {result.stderr}")
+        logging.log(level, f"INBOUND STDOUT: {result.stdout}")
+        result.check_returncode()
 
         logging.log(logging.INFO, f"Worker finished in {str(workspace)}")
     except subprocess.TimeoutExpired:

@@ -2,6 +2,7 @@ from error import assert_config, assert_eval, KillWorkerException
 from prompt import build_prompt, build_run_fix_prompt, build_inspiration_context
 from database import Database, PrimaryTableRow
 from task import Task
+from version import version_string
 import config
 import git
 import llm
@@ -18,8 +19,6 @@ import math
 from tqdm import tqdm
 
 random.seed(42)
-
-version_string = f"Project Evo 1.3.1"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -118,41 +117,40 @@ def select_island() -> int:
         return db.sample_island()
 
 def run_iterations() -> int:
-    with ThreadPoolExecutor(max_workers=config.cfg.concurrency) as pool:
-        pending = {}
-        remaining = config.cfg.iterations
+    pool = ThreadPoolExecutor(max_workers=config.cfg.concurrency)
+    pending = {}
+    remaining = config.cfg.iterations
 
-        try:
-            with tqdm(total=config.cfg.iterations) as pbar:
-                while remaining > 0 or pending:
-                    while remaining > 0 and len(pending) < config.cfg.concurrency:
-                        island_id = select_island()
-                        pending[pool.submit(run_worker, island_id)] = island_id
-                        remaining -= 1
-                    done, _ = wait(pending, return_when="FIRST_COMPLETED")
+    try:
+        with tqdm(total=config.cfg.iterations) as pbar:
+            while remaining > 0 or pending:
+                while remaining > 0 and len(pending) < config.cfg.concurrency:
+                    island_id = select_island()
+                    pending[pool.submit(run_worker, island_id)] = island_id
+                    remaining -= 1
+                done, _ = wait(pending, return_when="FIRST_COMPLETED")
 
-                    for future in done:
-                        island_id = pending.pop(future)
-                        try:
-                            future.result()
-                            pbar.update(1)
-                        except (Exception, KeyboardInterrupt) as e:
-                            logging.log(logging.ERROR, f"A worker raised {type(e)}. {e}")
-                            if isinstance(e, KillWorkerException) and config.cfg.gnhf:
-                                replacement = pool.submit(run_worker, island_id)
-                                pending[replacement] = island_id # Keep replacements on the same island
-                            else:
-                                print(f"A worker raised {type(e)}. Exiting...")
-                                logging.log(logging.WARNING, "Cancelling future threads and waiting for pool shutdown")
-                                pool.shutdown(wait=True, cancel_futures=True)
-                                if isinstance(e, KeyboardInterrupt): # Exiting cleanly on Ctrl+C should not be a "failed" execution
-                                    return 0
-                                return 1
-        except KeyboardInterrupt:
+                for future in done:
+                    island_id = pending.pop(future)
+                    try:
+                        future.result()
+                    except KillWorkerException as e:
+                        if not config.cfg.gnhf:
+                            raise
+                        logging.log(logging.ERROR, f"A worker raised {type(e)}. {e}")
+                        pending[pool.submit(run_worker, island_id)] = island_id # Keep replacements on the same island
+                    else:
+                        pbar.update(1)
+    except (Exception, KeyboardInterrupt) as e:
+        if isinstance(e, KeyboardInterrupt):
             print("\nCaught keyboard interrupt. Exiting...")
-            logging.log(logging.WARNING, "Cancelling future threads and waiting for pool shutdown")
-            pool.shutdown(wait=True, cancel_futures=True)
-            return 0
+        else:
+            logging.log(logging.ERROR, f"A worker raised {type(e)}. {e}")
+            print(f"A worker raised {type(e)}. Exiting...")
+        logging.log(logging.WARNING, "Cancelling future threads and waiting for pool shutdown")
+        return 0 if isinstance(e, KeyboardInterrupt) else 1
+    finally:
+        pool.shutdown(wait=True, cancel_futures=True)
     return 0
 
 def run(args: argparse.Namespace) -> int:
