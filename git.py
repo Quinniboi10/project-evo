@@ -1,3 +1,4 @@
+from error import KillWorkerException, KillPoolException
 from database import PrimaryTableRow
 import config
 
@@ -19,7 +20,7 @@ def autocommit(workspace: Path):
         if e.returncode == 1: # TODO: more narrow than just checking exit code
             pass
         else:
-            raise e
+            raise KillWorkerException(f"{e.cmd} failed")
 
 def bootstrap(target_branch: str):
     exec_in_workspace(config.cfg.project_root, f"git checkout -b \"{target_branch}\"")
@@ -30,7 +31,7 @@ def ensure_branch_exists(uuid: str):
     try:
         exec_in_workspace(config.cfg.project_root, f"git rev-parse --verify \"{name}\"")
     except subprocess.CalledProcessError:
-        raise RuntimeError(f"Invalid or corrupted database file; Database expects git branch '{name}' but it does not exist.")
+        raise KillPoolException(f"Invalid or corrupted database file; Database expects git branch '{name}' but it does not exist.")
 
 def create_new_workspace(parent: PrimaryTableRow, child: PrimaryTableRow) -> Path:
     branch = f"{config.cfg.branch_base}/{child.uuid}"

@@ -1,5 +1,6 @@
-from database import Database, PrimaryTableRow
+from error import assert_config, assert_eval, KillPoolException, KillWorkerException
 from prompt import build_prompt, build_run_fix_prompt
+from database import Database, PrimaryTableRow
 from task import Task
 import config
 import git
@@ -46,17 +47,17 @@ def build_parser() -> argparse.ArgumentParser:
 
 def check_requirements():
     from shutil import which
-    assert which("git") is not None, "Git is required for workspaces to isolate code"
+    assert_config(which("git") is not None, "Git is required for workspaces to isolate code")
     for adapter in set(config.cfg.adapter(m) for m in config.cfg.models):
-        assert which(adapter) is not None, f"The current configuration expects the command '{adapter}' but it cannot be found"
+        assert_config(which(adapter) is not None, f"The current configuration expects the command '{adapter}' but it cannot be found")
 
 def init_db():
     db = Database(config.cfg.db_file, PrimaryTableRow)
     # If the database is empty, bootstrap
     if len(db.select(f"SELECT id FROM {db.PRIMARY_TABLE} LIMIT 1;")) == 0:
         passed, score = config.cfg.eval_fn(config.cfg.project_root)
-        assert passed, "Baseline failed to pass evaluate()"
-        assert score > 0, "Evaluation function must be greater than 0"
+        assert_eval(passed, "Baseline failed to pass evaluate()")
+        assert_eval(score > 0, "Evaluation function must be greater than 0")
         uuid = uuid7().hex
         git.bootstrap(f"{config.cfg.branch_base}/{uuid}")
         db.insert(PrimaryTableRow("Baseline", uuid, None, None, None, score))
@@ -95,8 +96,7 @@ def run_worker():
 
         child.score = score
 
-        if not child.score > 0:
-            raise 
+        assert_eval(score > 0, "Evaluated scores must be greater than 0")
 
         child.name = llm.get_attempt_name(workspace)
 
@@ -119,9 +119,9 @@ def run_iterations() -> int:
                     try:
                         result = future.result()
                         pbar.update(1)
-                    except BaseException as e:
+                    except (Exception, KeyboardInterrupt) as e:
                         logging.log(logging.ERROR, f"A worker raised {type(e)}. {e}")
-                        if config.cfg.gnhf:
+                        if isinstance(e, KillWorkerException) and config.cfg.gnhf:
                             pending.add(pool.submit(run_worker)) # Add a new worker to replace the dead one
                         else:
                             print(f"A worker raised {type(e)}. Exiting...")

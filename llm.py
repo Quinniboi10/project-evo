@@ -1,3 +1,4 @@
+from error import KillPoolException
 from task import Task
 import config
 import git
@@ -54,7 +55,7 @@ def route_prompt(workspace: Path, prompt: str, task: Task) -> str:
         elif adapter == "opencode":
             result = _opencode(*args)
         else:
-            raise NotImplementedError(f"Cannot route to model '{model}' because adapter '{adapter}' cannot be found")
+            raise KillPoolException(f"Cannot route to model '{model}' because adapter '{adapter}' cannot be found")
 
         if result.returncode != 0:
             logging.log(logging.ERROR, f"{adapter}/{model} session returned non-zero exit code")

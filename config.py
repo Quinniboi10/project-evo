@@ -1,3 +1,5 @@
+from error import assert_config
+
 from argparse import Namespace
 from pathlib import Path
 
@@ -26,14 +28,14 @@ class Config:
         self._sanitize_inputs()
 
     def _sanitize_inputs(self):
-        assert self.softmax_temp > 0, "Softmax temperature must be greater than 0"
-        assert len(self.objective) > 0, "Objective does not exist"
+        assert_config(self.softmax_temp > 0, "Softmax temperature must be greater than 0")
+        assert_config(len(self.objective) > 0, "Objective does not exist")
 
         max_concurrency = 0
         for model in self._routing.values():
             max_concurrency += self.max_concurrency(model)
-        assert max_concurrency >= self.concurrency, f"Config asks for concurrency of {self.concurrency} but all listed providers only supply {max_concurrency}"
-        assert self.max_concurrency(self.fallback_model) >= self.concurrency, f"Fallback model must be able to handle {max_concurrency} concurrent sessions"
+        assert_config(max_concurrency >= self.concurrency, f"Config asks for concurrency of {self.concurrency} but all listed providers only supply {max_concurrency}")
+        assert_config(self.max_concurrency(self.fallback_model) >= self.concurrency, f"Fallback model must be able to handle {max_concurrency} concurrent sessions")
 
         for job, model in self._routing.items():
             if self.model_full_name(model).startswith("opencode/"):
