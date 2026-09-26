@@ -113,6 +113,7 @@ class SmokeIntegrationTests(unittest.TestCase):
         self.assertFalse((self.root / "project-evo.log").exists())
 
     def test_existing_database_validation_and_verification_failure(self):
+        self.config.write_text((ROOT / "config.toml").read_text().replace("island_count = 4", "island_count = 1"))
         script = '''import main
 import smoke
 import config
@@ -156,7 +157,7 @@ sys.exit(smoke.run(args, run))
     def test_configured_inspiration_counts(self):
         for count in (0, 1, 3):
             with self.subTest(count=count):
-                self.config.write_text((ROOT / "config.toml").read_text().replace("inspiration_count = 2", f"inspiration_count = {count}").replace("concurrency = 5", "concurrency = 1"))
+                self.config.write_text((ROOT / "config.toml").read_text().replace("inspiration_count = 2", f"inspiration_count = {count}").replace("concurrency = 5", "concurrency = 1").replace("island_count = 4", "island_count = 1"))
                 result, artifacts = self.run_smoke("-i", "6", "--debug")
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 log = (artifacts / "logs" / "project-evo.log").read_text()
@@ -235,28 +236,28 @@ class WorkerFailureTests(unittest.TestCase):
     def test_pool_failures_and_replacement(self):
         for gnhf, error, expected in ((False, KillWorkerException, 1), (True, KillWorkerException, 0), (False, KillPoolException, 1), (True, KillPoolException, 1), (True, RuntimeError, 1), (False, KeyboardInterrupt, 0)):
             with self.subTest(gnhf=gnhf, error=error):
-                cfg = SimpleNamespace(concurrency=1, iterations=1, gnhf=gnhf)
-                with patch.object(config, "cfg", cfg), patch.object(main, "run_worker", side_effect=[error("test"), None]) as worker:
+                cfg = SimpleNamespace(concurrency=1, iterations=1, island_count=4, gnhf=gnhf)
+                with patch.object(config, "cfg", cfg), patch.object(main, "select_island", return_value=0), patch.object(main, "run_worker", side_effect=[error("test"), None]) as worker:
                     self.assertEqual(main.run_iterations(), expected)
                     self.assertEqual(worker.call_count, 2 if gnhf and error is KillWorkerException else 1)
 
     def test_cancellation_while_waiting(self):
-        cfg = SimpleNamespace(concurrency=1, iterations=1, gnhf=False)
-        with patch.object(config, "cfg", cfg), patch.object(main, "run_worker"), patch.object(main, "wait", side_effect=KeyboardInterrupt):
+        cfg = SimpleNamespace(concurrency=1, iterations=1, island_count=4, gnhf=False)
+        with patch.object(config, "cfg", cfg), patch.object(main, "select_island", return_value=0), patch.object(main, "run_worker"), patch.object(main, "wait", side_effect=KeyboardInterrupt):
             self.assertEqual(main.run_iterations(), 0)
 
     def test_workspace_cleanup_on_evaluation_error(self):
         from database import PrimaryTableRow
-        cfg = SimpleNamespace(db_file="unused", inspiration_count=2, eval_fn=Mock(side_effect=RuntimeError("evaluation failed")))
+        cfg = SimpleNamespace(db_file="unused", inspiration_count=2, cross_island_inspiration_probability=0.1, eval_fn=Mock(side_effect=RuntimeError("evaluation failed")))
         parent = PrimaryTableRow("Baseline", "baseline", None, None, None, 1)
         parent.id = 1
         with patch.object(config, "cfg", cfg), patch.object(main, "Database") as database, patch.object(git, "create_new_workspace", return_value=Path("workspace")), patch.object(git, "delete_workspace") as cleanup, patch.object(llm, "route_prompt"), patch.object(main, "build_prompt", return_value="prompt"):
             database.return_value.weighted_sample.return_value = parent
             database.return_value.sample_inspirations.return_value = []
             with self.assertRaisesRegex(RuntimeError, "evaluation failed"):
-                main.run_worker()
+                main.run_worker(0)
             cleanup.assert_called_once_with(Path("workspace"))
-            database.return_value.insert.assert_not_called()
+            database.return_value.insert_attempt.assert_not_called()
 
     def test_git_environment_restored_on_failure(self):
         with patch.dict(os.environ, {"GIT_DIR": "original", "GIT_CONFIG_COUNT": "2"}):

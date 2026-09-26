@@ -39,7 +39,11 @@ where the boolean represents if the test succeeded, and the float represents the
 Each attempt starts from one "parent" workspace. Exploration (30%) tries alternative approaches; improvement refines the current implementation.
 
 - Set `[general].inspiration_count` in `config.toml` to limit reference attempts per prompt (`0` to disable). This number must be nonnegative.
-- References use the best-scoring alternative, then random remaining alternatives without duplicates, subject to availability.
+- `[general].island_count` controls the number of islands to search; islands share the worker budget and select parents locally. Set `1` for a single population.
+- Worker allocation favors higher island best scores using the configured temperature. As island node counts diverge, allocation blends toward uniform; each baseline counts as one node.
+- Local references use the best-scoring alternative, then random remaining alternatives without duplicates.
+- `cross_island_inspiration_probability` defaults to `0.1`: occasionally one reference slot uses another island's best non-baseline attempt. Set `0` for fully local inspiration.
+- Island count is fixed when resuming a database; sharing probability may change. Pre-island databases cannot resume evolution; start a new database.
 - Scores and diffs are included directly in prompts, so agents need no Git access. Each attempt retains one parent.
 
 ### Smoke runs

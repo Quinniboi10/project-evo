@@ -6,6 +6,7 @@ from pathlib import Path
 from importlib.machinery import SourceFileLoader
 from typing import Callable, cast
 
+import math
 import logging
 import tomllib
 import time
@@ -31,6 +32,10 @@ class Config:
         assert_config(self.softmax_temp > 0, "Softmax temperature must be greater than 0")
         assert_config(len(self.objective) > 0, "Objective does not exist")
         assert_config(type(self.inspiration_count) is int and self.inspiration_count >= 0, "general.inspiration_count is required and must be a nonnegative integer")
+
+        assert_config(type(self.island_count) is int and self.island_count > 0, "general.island_count must be a positive integer")
+        probability = self.cross_island_inspiration_probability
+        assert_config(type(probability) in (int, float) and math.isfinite(probability) and 0 <= probability <= 1, "general.cross_island_inspiration_probability must be finite and between 0 and 1")
 
         max_concurrency = 0
         for model in self._routing.values():
@@ -71,6 +76,9 @@ class Config:
         self.max_fix_attempts = int(self.config["general"]["max_fix_attempts"])
         self.llm_timeout_sec  = int(self.config["general"]["llm_timeout_sec"])
         self.inspiration_count = self.config["general"].get("inspiration_count")
+
+        self.island_count = self.config["general"].get("island_count", 4)
+        self.cross_island_inspiration_probability = self.config["general"].get("cross_island_inspiration_probability", 0.1)
 
         self.branch_base    = self.config["git"]["branch_base"]
         self.workspace_base = self.config["git"]["workspace_base"]

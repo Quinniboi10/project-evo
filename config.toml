@@ -2,6 +2,8 @@
 temperature = 0.05 # Softmax temperature to use when selecting what to explore
 concurrency = 5    # Number of concurrent threads to run
 inspiration_count = 2 # Maximum reference attempts per prompt; 0 disables inspiration
+island_count = 4 # Independent populations sharing the worker pool; fixed when resuming
+cross_island_inspiration_probability = 0.1 # Chance of reserving one reference for a foreign elite
 
 max_fix_attempts = 3     # Maximum number of times to allow the LLM to try to fix a workspace
 llm_timeout_sec  = 10800 # Maximum time to wait before killing the LLM

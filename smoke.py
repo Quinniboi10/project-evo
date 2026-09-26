@@ -117,6 +117,14 @@ def evaluate(workspace):
         with closing(sqlite3.connect(cfg.db_file)) as db:
             rows = db.execute("SELECT uuid, name, score, parent_id FROM evolve").fetchall()
             uuids = dict(db.execute("SELECT id, uuid FROM evolve").fetchall())
+            members = db.execute("SELECT island_id, attempt_id FROM island_membership").fetchall()
+            baseline_id = db.execute("SELECT id FROM evolve WHERE parent_id IS NULL").fetchone()[0]
+            assert_config({island for island, attempt in members if attempt == baseline_id} == set(range(cfg.island_count)), "Smoke baseline must seed every island")
+            for attempt_id, parent_id in db.execute("SELECT id, parent_id FROM evolve WHERE parent_id IS NOT NULL"):
+                islands = [island for island, attempt in members if attempt == attempt_id]
+                assert_config(len(islands) == 1, "Smoke child must belong to exactly one island")
+                assert_config(parent_id in uuids, "Smoke database references a missing parent")
+                assert_config((islands[0], parent_id) in members, "Smoke parent belongs to a different island")
         expected = {path.name: attempt for path, attempt in self.attempts.items() if attempt["scenario"] == 0 or (attempt["scenario"] == 1 and cfg.max_fix_attempts > 0)}
         assert_config(len(self.attempts) == cfg.iterations, "Smoke did not execute all iterations")
         assert_config(len(rows) == len(expected) + 1, "Smoke database row count does not match successful attempts")

@@ -8,6 +8,7 @@ import llm
 
 from concurrent.futures import ThreadPoolExecutor, wait
 from uuid import uuid7
+from contextlib import closing
 
 import argparse
 import logging
@@ -18,7 +19,7 @@ from tqdm import tqdm
 
 random.seed(42)
 
-version_string = f"Project Evo 1.1.0"
+version_string = f"Project Evo 1.2.0"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -56,79 +57,90 @@ def check_requirements():
         assert_config(which(adapter) is not None, f"The current configuration expects the command '{adapter}' but it cannot be found")
 
 def init_db():
-    db = Database(config.cfg.db_file, PrimaryTableRow)
-    # If the database is empty, bootstrap
-    if len(db.select(f"SELECT id FROM {db.PRIMARY_TABLE} LIMIT 1;")) == 0:
-        passed, score = config.cfg.eval_fn(config.cfg.project_root)
-        assert_eval(passed, "Baseline failed to pass evaluate()")
-        assert_eval(score > 0 and math.isfinite(score), "Evaluation function must be greater than 0 and finite")
-        uuid = uuid7().hex
-        git.bootstrap(f"{config.cfg.branch_base}/{uuid}")
-        db.insert(PrimaryTableRow("Baseline", uuid, None, None, None, score))
-    # Otherwise, verify all the branches still exist
-    else:
-        for _, uuid in db.select(f"SELECT id, uuid FROM {db.PRIMARY_TABLE};"):
-            git.ensure_branch_exists(uuid)
+    with closing(Database(config.cfg.db_file, PrimaryTableRow)) as db:
+        db.init_islands(config.cfg.island_count)
+        # If the database is empty, bootstrap
+        if len(db.select(f"SELECT id FROM {db.PRIMARY_TABLE} LIMIT 1;")) == 0:
+            passed, score = config.cfg.eval_fn(config.cfg.project_root)
+            assert_eval(passed, "Baseline failed to pass evaluate()")
+            assert_eval(score > 0 and math.isfinite(score), "Evaluation function must be greater than 0 and finite")
+            uuid = uuid7().hex
+            git.bootstrap(f"{config.cfg.branch_base}/{uuid}")
+            db.insert_baseline(PrimaryTableRow("Baseline", uuid, None, None, None, score))
+        # Otherwise, verify all the branches still exist
+        else:
+            for _, uuid in db.select(f"SELECT id, uuid FROM {db.PRIMARY_TABLE};"):
+                git.ensure_branch_exists(uuid)
 
-def run_worker():
+def run_worker(island_id: int):
     # Database connections must be held at the per-thread level (not shared)
-    db = Database(config.cfg.db_file, PrimaryTableRow)
-    parent = db.weighted_sample()
-    assert type(parent) == PrimaryTableRow
+    with closing(Database(config.cfg.db_file, PrimaryTableRow)) as db:
+        parent = db.weighted_sample(island_id)
+        assert type(parent) == PrimaryTableRow
 
-    task = Task.EXPLORE if random.random() < 0.3 else Task.IMPROVE # TODO: smarter exploration
+        task = Task.EXPLORE if random.random() < 0.3 else Task.IMPROVE # TODO: smarter exploration
 
-    child = PrimaryTableRow.create_new_child(parent, task)
-    workspace = git.create_new_workspace(parent, child)
+        child = PrimaryTableRow.create_new_child(parent, task)
+        workspace = git.create_new_workspace(parent, child)
 
-    try:
-        inspirations = build_inspiration_context(parent, db.sample_inspirations(parent, config.cfg.inspiration_count))
-        prompt = build_prompt(parent, child, inspirations)
-        child.model = llm.route_prompt(workspace, prompt, task)
+        try:
+            references = db.sample_inspirations(parent, config.cfg.inspiration_count, island_id, config.cfg.cross_island_inspiration_probability)
+            logging.log(logging.INFO, f"Island {island_id} attempt {child.uuid}, parent {parent.uuid}, inspirations {[row.uuid for row in references]}")
+            inspirations = build_inspiration_context(parent, references)
+            prompt = build_prompt(parent, child, inspirations)
+            child.model = llm.route_prompt(workspace, prompt, task)
 
-        passed, score = config.cfg.eval_fn(workspace)
-        fixes = 0
-        while not passed and fixes < config.cfg.max_fix_attempts:
-            fixes += 1
-            logging.log(logging.INFO, f"Run UUID {child.uuid} failed verification, retrying ({fixes}/{config.cfg.max_fix_attempts})")
-            prompt = build_run_fix_prompt(parent, child)
-            llm.route_prompt(workspace, prompt, task)
             passed, score = config.cfg.eval_fn(workspace)
+            fixes = 0
+            while not passed and fixes < config.cfg.max_fix_attempts:
+                fixes += 1
+                logging.log(logging.INFO, f"Run UUID {child.uuid} failed verification, retrying ({fixes}/{config.cfg.max_fix_attempts})")
+                prompt = build_run_fix_prompt(parent, child)
+                llm.route_prompt(workspace, prompt, task)
+                passed, score = config.cfg.eval_fn(workspace)
 
-        if not passed:
-            logging.log(logging.WARNING, f"Skipping child UUID {child.uuid} after failing {fixes} attempts to pass")
-            return # Do not add the broken child to the database as reference
+            if not passed:
+                logging.log(logging.WARNING, f"Skipping child UUID {child.uuid} after failing {fixes} attempts to pass")
+                return # Do not add the broken child to the database as reference
 
-        child.score = score
+            child.score = score
 
-        assert_eval(score > 0 and math.isfinite(score), "Evaluated scores must be greater than 0 and finitee")
+            assert_eval(score > 0 and math.isfinite(score), "Evaluated scores must be greater than 0 and finitee")
 
-        child.name = llm.get_attempt_name(workspace)
+            child.name = llm.get_attempt_name(workspace)
 
-        db.insert(child)
-    finally:
-        git.delete_workspace(workspace)
+            db.insert_attempt(child, island_id)
+        finally:
+            git.delete_workspace(workspace)
+
+def select_island() -> int:
+    with closing(Database(config.cfg.db_file, PrimaryTableRow)) as db:
+        return db.sample_island()
 
 def run_iterations() -> int:
     with ThreadPoolExecutor(max_workers=config.cfg.concurrency) as pool:
-        pending = [
-            pool.submit(run_worker)
-            for _ in range(config.cfg.iterations)
-        ]
+        pending = {}
+        remaining = config.cfg.iterations
 
         try:
             with tqdm(total=config.cfg.iterations) as pbar:
-                while len(pending) > 0:
-                    done, pending = wait(pending, return_when="FIRST_COMPLETED")
+                while remaining > 0 or pending:
+                    while remaining > 0 and len(pending) < config.cfg.concurrency:
+                        island_id = select_island()
+                        pending[pool.submit(run_worker, island_id)] = island_id
+                        remaining -= 1
+                    done, _ = wait(pending, return_when="FIRST_COMPLETED")
 
                     for future in done:
+                        island_id = pending.pop(future)
                         try:
-                            result = future.result()
+                            future.result()
                             pbar.update(1)
                         except (Exception, KeyboardInterrupt) as e:
                             logging.log(logging.ERROR, f"A worker raised {type(e)}. {e}")
                             if isinstance(e, KillWorkerException) and config.cfg.gnhf:
-                                pending.add(pool.submit(run_worker)) # Add a new worker to replace the dead one
+                                replacement = pool.submit(run_worker, island_id)
+                                pending[replacement] = island_id # Keep replacements on the same island
                             else:
                                 print(f"A worker raised {type(e)}. Exiting...")
                                 logging.log(logging.WARNING, "Cancelling future threads and waiting for pool shutdown")

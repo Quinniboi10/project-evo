@@ -21,27 +21,28 @@ class InspirationSelectionTests(unittest.TestCase):
         self.db = Database(Path(temp.name) / "test.db", PrimaryTableRow)
         self.addCleanup(self.db.db.close)
         self.parent = PrimaryTableRow("Parent", "parent", None, None, None, 10)
-        self.db.insert(self.parent)
+        self.db.init_islands(1)
+        self.db.insert_baseline(self.parent)
         self.parent.id = 1
 
     def add_reference(self, uuid: str, score: float):
-        self.db.insert(PrimaryTableRow(uuid, uuid, "model", Task.IMPROVE, self.parent.id, score))
+        self.db.insert_attempt(PrimaryTableRow(uuid, uuid, "model", Task.IMPROVE, self.parent.id, score), 0)
 
     def test_small_pools_and_limits(self):
-        self.assertEqual(self.db.sample_inspirations(self.parent, 2), [])
+        self.assertEqual(self.db.sample_inspirations(self.parent, 2, 0, 0), [])
         self.add_reference("only", 5)
-        self.assertEqual([row.uuid for row in self.db.sample_inspirations(self.parent, 2)], ["only"])
-        self.assertEqual(self.db.sample_inspirations(self.parent, 0), [])
+        self.assertEqual([row.uuid for row in self.db.sample_inspirations(self.parent, 2, 0, 0)], ["only"])
+        self.assertEqual(self.db.sample_inspirations(self.parent, 0, 0, 0), [])
         self.add_reference("best", 20)
-        self.assertEqual([row.uuid for row in self.db.sample_inspirations(self.parent, 1)], ["best"])
-        self.assertEqual([row.uuid for row in self.db.sample_inspirations(self.parent, 8)], ["best", "only"])
+        self.assertEqual([row.uuid for row in self.db.sample_inspirations(self.parent, 1, 0, 0)], ["best"])
+        self.assertEqual([row.uuid for row in self.db.sample_inspirations(self.parent, 8, 0, 0)], ["best", "only"])
 
     def test_quality_variety_ties_and_row_compatibility(self):
         for uuid, score in (("best", 20), ("tied", 20), ("variety", 1)):
             self.add_reference(uuid, score)
         sample = Mock(side_effect=lambda candidates, count: candidates[-count:])
         with patch("database.random.sample", sample):
-            references = self.db.sample_inspirations(self.parent, 2)
+            references = self.db.sample_inspirations(self.parent, 2, 0, 0)
         self.assertEqual([row.uuid for row in references], ["best", "variety"])
         assert sample.call_args is not None
         self.assertEqual([row[2] for row in sample.call_args.args[0]], ["tied", "variety"])
@@ -123,7 +124,7 @@ class InspirationDiffTests(unittest.TestCase):
 
 class InspirationPromptTests(unittest.TestCase):
     def setUp(self):
-        self.cfg = SimpleNamespace(branch_base="evo", objective="Make the program faster", inspiration_count=3)
+        self.cfg = SimpleNamespace(branch_base="evo", objective="Make the program faster", inspiration_count=3, cross_island_inspiration_probability=0.1)
         context = patch.object(config, "cfg", self.cfg)
         context.start()
         self.addCleanup(context.stop)
@@ -169,14 +170,14 @@ class InspirationPromptTests(unittest.TestCase):
         with patch.object(main, "Database", database), patch.object(git, "create_new_workspace", return_value=Path("workspace")), patch.object(git, "delete_workspace", cleanup), patch.object(git, "inspiration_diff", diff), patch.object(main.llm, "route_prompt", route), patch.object(main.llm, "get_attempt_name", return_value="Attempt"):
             database.return_value.weighted_sample.return_value = self.parent
             database.return_value.sample_inspirations.return_value = [self.reference]
-            main.run_worker()
-        database.return_value.sample_inspirations.assert_called_once_with(self.parent, 3)
+            main.run_worker(0)
+        database.return_value.sample_inspirations.assert_called_once_with(self.parent, 3, 0, 0.1)
         diff.assert_called_once_with(self.parent, self.reference)
         self.assertEqual(route.call_count, 2)
         self.assertIn("+new", route.call_args_list[0].args[1])
         self.assertNotIn("BEGIN INSPIRATION", route.call_args_list[1].args[1])
         self.assertIn("failed the tests", route.call_args_list[1].args[1])
-        child = database.return_value.insert.call_args.args[0]
+        child = database.return_value.insert_attempt.call_args.args[0]
         self.assertEqual(child.parent_id, self.parent.id)
         self.assertEqual(child.score, 12)
         cleanup.assert_called_once_with(Path("workspace"))
