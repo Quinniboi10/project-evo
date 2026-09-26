@@ -50,7 +50,9 @@ def route_prompt(workspace: Path, prompt: str, task: Task) -> str:
 
     try:
         args = workspace, config.cfg.model_full_name(model), prompt, config.cfg.extra_args(model)
-        if adapter == "codex":
+        if config.cfg.args.smoke and adapter in ("codex", "opencode"):
+            result = config.cfg.args.smoke_session.query(*args)
+        elif adapter == "codex":
             result = _codex(*args)
         elif adapter == "opencode":
             result = _opencode(*args)

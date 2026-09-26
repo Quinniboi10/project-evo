@@ -27,11 +27,23 @@ Arguments
 - `--logfile <PATH>` - the .log file to which all log data will be written
 - `--gnhf` - Short for "good night have fun", agents will keep working and errors are logged but do not terminate work
 - `--debug` - Enables writing of DEBUG level logs - Please note that debug logs include all input/output from every query sent to or from a LLM, making the log file grow very quickly
+- `--smoke` - Run a protected simulation in a retained temporary repository without querying LLMs (see below)
 
 \*The eval_file argument must supply a file that implements the below function signature  
 `evaluate(path: Path) -> bool, float`  
 where the boolean represents if the test succeeded, and the float represents the score (greater than 0) of the workspace  
 ***EVALUATE SHOULD BE NONDESTRICTUVE AS IT WILL BE CALLED ON THE PROJECT ROOT DIRECTORY TO ESTABLISH A BASELINE***
+
+### Smoke runs
+
+Run `python3 main.py --smoke -i 12 --debug` to check worktrees, commits, database storage, routing and logging without querying LLMs. Requires Git.
+
+- Uses a synthetic project and evaluator; supplied project/evaluator paths are ignored, and the objective is optional
+- Keeps your config and run flags; `--db` and `--logfile` use only their filenames inside the temporary directory
+- Cycles through success, repair and exhausted retries (use at least 3 iterations); expected failures are skipped normally
+- Prints `SMOKE PASSED` after verification and retains the repository, database and logs at the printed location for inspection and manual cleanup
+
+Tests: `python3 -m unittest discover -s tests -v`
 
 ### Examples
 - [Command runtime](examples/command-runtime/README.md) - Optimize toward minimal command runtime
@@ -42,4 +54,4 @@ where the boolean represents if the test succeeded, and the float represents the
 Pre-commit git hooks that fail will interfere with the automatic code commits
 
 ---
-While all code in this repository is built around LLMs, the core code itself was written entirely by me. LLMs did chip in for the HTML end of the dashboard since I cannot effectively write HTML.
+While all code in this repository is built around LLMs, the core code itself was written entirely by me. After v1.0.0, agents were used to accelerate development.

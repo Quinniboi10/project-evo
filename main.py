@@ -1,4 +1,4 @@
-from error import assert_config, assert_eval, KillPoolException, KillWorkerException
+from error import assert_config, assert_eval, KillWorkerException
 from prompt import build_prompt, build_run_fix_prompt
 from database import Database, PrimaryTableRow
 from task import Task
@@ -32,9 +32,9 @@ def build_parser() -> argparse.ArgumentParser:
       where the boolean represents if the test succeeded, and the float represents the score (greater than 0) of the workspace
       *** EVALUATE SHOULD BE NONDESTRICTUVE AS IT WILL BE CALLED ON THE ROOT DIRECTORY ***
  """)
-    parser.add_argument("project_path", help="Path to the base project")
-    parser.add_argument("eval_file", help="File that provides the function to evaluate a workspace (see below)")
-    obj_group = parser.add_mutually_exclusive_group(required=True)
+    parser.add_argument("project_path", help="Path to the base project (optional with --smoke)", nargs="?")
+    parser.add_argument("eval_file", help="File that provides the function to evaluate a workspace (optional with --smoke)", nargs="?")
+    obj_group = parser.add_mutually_exclusive_group()
     obj_group.add_argument("--objective", help="Objective for the LLMs to follow", metavar="str")
     obj_group.add_argument("--objective_file", help="File from which to read the objective", metavar="PATH")
     parser.add_argument("-c", "--config", help="Path to the config.toml", metavar="PATH", default="config.toml")
@@ -43,12 +43,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--logfile", help="Path to log to", metavar="PATH", default="project-evo.log")
     parser.add_argument("--gnhf", help="Short for \"good night have fun\". Agents will keep working and errors are logged but do not terminate work", action="store_true")
     parser.add_argument("--debug", help="Enable debug-level logging", action="store_true")
+    parser.add_argument("--smoke", help="Simulate a protected run in a retained temporary repository without querying LLMs", action="store_true")
  
     return parser
 
 def check_requirements():
     from shutil import which
     assert_config(which("git") is not None, "Git is required for workspaces to isolate code")
+    if config.cfg.args.smoke:
+        return
     for adapter in set(config.cfg.adapter(m) for m in config.cfg.models):
         assert_config(which(adapter) is not None, f"The current configuration expects the command '{adapter}' but it cannot be found")
 
@@ -139,9 +142,20 @@ def run_iterations() -> int:
             return 0
     return 0
 
-if __name__ == "__main__":
-    config.cfg = config.Config(build_parser().parse_args())
+def run(args: argparse.Namespace) -> int:
+    config.cfg = config.Config(args)
     check_requirements()
     init_db()
-    exit_code = run_iterations()
+    return run_iterations()
+
+if __name__ == "__main__":
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.smoke:
+        import smoke
+        exit_code = smoke.run(args, run)
+    else:
+        if args.project_path is None or args.eval_file is None or (args.objective is None and args.objective_file is None):
+            parser.error("project_path, eval_file and --objective or --objective_file are required without --smoke")
+        exit_code = run(args)
     exit(exit_code)

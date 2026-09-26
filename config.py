@@ -37,6 +37,10 @@ class Config:
         assert_config(max_concurrency >= self.concurrency, f"Config asks for concurrency of {self.concurrency} but all listed providers only supply {max_concurrency}")
         assert_config(self.max_concurrency(self.fallback_model) >= self.concurrency, f"Fallback model must be able to handle {max_concurrency} concurrent sessions")
 
+        if self.args.smoke:
+            self.args.smoke_session.validate(self)
+            return
+
         for job, model in self._routing.items():
             if self.model_full_name(model).startswith("opencode/"):
                 logging.log(logging.WARNING, f"{model} is routing through opencode's free model library. Ensuring user is OK with data collection.")
