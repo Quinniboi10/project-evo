@@ -12,12 +12,13 @@ from uuid import uuid7
 import argparse
 import logging
 import random
+import math
 
 from tqdm import tqdm
 
 random.seed(42)
 
-version_string = f"Project Evo 0.0.1"
+version_string = f"Project Evo 1.0.0"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -57,7 +58,7 @@ def init_db():
     if len(db.select(f"SELECT id FROM {db.PRIMARY_TABLE} LIMIT 1;")) == 0:
         passed, score = config.cfg.eval_fn(config.cfg.project_root)
         assert_eval(passed, "Baseline failed to pass evaluate()")
-        assert_eval(score > 0, "Evaluation function must be greater than 0")
+        assert_eval(score > 0 and math.isfinite(score), "Evaluation function must be greater than 0 and finite")
         uuid = uuid7().hex
         git.bootstrap(f"{config.cfg.branch_base}/{uuid}")
         db.insert(PrimaryTableRow("Baseline", uuid, None, None, None, score))
@@ -96,7 +97,7 @@ def run_worker():
 
         child.score = score
 
-        assert_eval(score > 0, "Evaluated scores must be greater than 0")
+        assert_eval(score > 0 and math.isfinite(score), "Evaluated scores must be greater than 0 and finitee")
 
         child.name = llm.get_attempt_name(workspace)
 
@@ -111,23 +112,31 @@ def run_iterations() -> int:
             for _ in range(config.cfg.iterations)
         ]
 
-        with tqdm(total=config.cfg.iterations) as pbar:
-            while len(pending) > 0:
-                done, pending = wait(pending, return_when="FIRST_COMPLETED")
+        try:
+            with tqdm(total=config.cfg.iterations) as pbar:
+                while len(pending) > 0:
+                    done, pending = wait(pending, return_when="FIRST_COMPLETED")
 
-                for future in done:
-                    try:
-                        result = future.result()
-                        pbar.update(1)
-                    except (Exception, KeyboardInterrupt) as e:
-                        logging.log(logging.ERROR, f"A worker raised {type(e)}. {e}")
-                        if isinstance(e, KillWorkerException) and config.cfg.gnhf:
-                            pending.add(pool.submit(run_worker)) # Add a new worker to replace the dead one
-                        else:
-                            print(f"A worker raised {type(e)}. Exiting...")
-                            logging.log(logging.WARNING, "Cancelling future threads and waiting for pool shutdown")
-                            pool.shutdown(wait=True, cancel_futures=True)
-                            return 1
+                    for future in done:
+                        try:
+                            result = future.result()
+                            pbar.update(1)
+                        except (Exception, KeyboardInterrupt) as e:
+                            logging.log(logging.ERROR, f"A worker raised {type(e)}. {e}")
+                            if isinstance(e, KillWorkerException) and config.cfg.gnhf:
+                                pending.add(pool.submit(run_worker)) # Add a new worker to replace the dead one
+                            else:
+                                print(f"A worker raised {type(e)}. Exiting...")
+                                logging.log(logging.WARNING, "Cancelling future threads and waiting for pool shutdown")
+                                pool.shutdown(wait=True, cancel_futures=True)
+                                if isinstance(e, KeyboardInterrupt): # Exiting cleanly on Ctrl+C should not be a "failed" execution
+                                    return 0
+                                return 1
+        except KeyboardInterrupt:
+            print("\nCaught keyboard interrupt. Exiting...")
+            logging.log(logging.WARNING, "Cancelling future threads and waiting for pool shutdown")
+            pool.shutdown(wait=True, cancel_futures=True)
+            return 0
     return 0
 
 if __name__ == "__main__":
