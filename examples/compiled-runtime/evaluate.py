@@ -35,5 +35,5 @@ def evaluate(workspace: Path) -> tuple[bool, float]:
             times.append(run_and_time_cmd(TARGET_COMMAND, workspace, TARGET_STDIN))
 
         return True, len(times) / sum(times) # Convert to runs/s to keep higher is better
-    except BaseException:
+    except Exception:
         return False, 0

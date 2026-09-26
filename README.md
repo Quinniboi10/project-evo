@@ -38,5 +38,8 @@ where the boolean represents if the test succeeded, and the float represents the
 - [Compiled runtime](examples/compiled-runtime/README.md) - Run initial setup like `make` or `cargo build`, then minimize the runtime of a command
 - [Singularity](examples/singularity/README.md) - The custom evaluation code used for the 3.96x performance increase mentioned [above](README.md#real-applications)
 
+### Limitations
+Pre-commit git hooks that fail will interfere with the automatic code commits
+
 ---
 While all code in this repository is built around LLMs, the core code itself was written entirely by me. LLMs did chip in for the HTML end of the dashboard since I cannot effectively write HTML.

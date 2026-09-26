@@ -142,7 +142,7 @@ class Database():
         ]
         max_score = max(scores)
         weights = [
-            math.exp(math.log(score / max_score) / temp)
+            math.exp((math.log(score) - math.log(max_score)) / temp)
             for score in scores
         ]
 

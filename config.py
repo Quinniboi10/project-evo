@@ -74,6 +74,8 @@ class Config:
         self.improvement_model: str = self._routing["improvement"]
         self.fallback_model: str    = self._routing["fallback"]
 
+        self.models = set((self.exploration_model, self.improvement_model, self.fallback_model))
+
     def adapter(self, model: str) -> str:
         return self._providers[model]["adapter"]
     def model_full_name(self, model: str) -> str:

@@ -22,13 +22,13 @@ def autocommit(workspace: Path):
             raise e
 
 def bootstrap(target_branch: str):
-    exec_in_workspace(config.cfg.project_root, f"git checkout -b {target_branch}")
+    exec_in_workspace(config.cfg.project_root, f"git checkout -b \"{target_branch}\"")
     autocommit(config.cfg.project_root)
 
 def ensure_branch_exists(uuid: str):
     name = f"{config.cfg.branch_base}/{uuid}"
     try:
-        exec_in_workspace(config.cfg.project_root, f"git rev-parse --verify {name}")
+        exec_in_workspace(config.cfg.project_root, f"git rev-parse --verify \"{name}\"")
     except subprocess.CalledProcessError:
         raise RuntimeError(f"Invalid or corrupted database file; Database expects git branch '{name}' but it does not exist.")
 
@@ -39,7 +39,7 @@ def create_new_workspace(parent: PrimaryTableRow, child: PrimaryTableRow) -> Pat
 
     (config.cfg.project_root / config.cfg.workspace_base).mkdir(exist_ok=True)
 
-    exec_in_workspace(config.cfg.project_root, f"git worktree add -b {branch} {path} {parent_br}")
+    exec_in_workspace(config.cfg.project_root, f"git worktree add -b \"{branch}\" \"{path}\" \"{parent_br}\"")
 
     return (config.cfg.project_root / path).resolve(strict=True)
 

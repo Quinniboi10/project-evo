@@ -39,5 +39,5 @@ def evaluate(workspace: Path) -> tuple[bool, float]:
                 return True, sum(int(nps) for _, nps in runs) / RUNS
             finally:
                 run_cmd(["make", "clean"], workspace)
-    except BaseException:
+    except Exception:
         return False, 0

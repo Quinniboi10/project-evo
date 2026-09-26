@@ -47,6 +47,8 @@ def build_parser() -> argparse.ArgumentParser:
 def check_requirements():
     from shutil import which
     assert which("git") is not None, "Git is required for workspaces to isolate code"
+    for adapter in set(config.cfg.adapter(m) for m in config.cfg.models):
+        assert which(adapter) is not None, f"The current configuration expects the command '{adapter}' but it cannot be found"
 
 def init_db():
     db = Database(config.cfg.db_file, PrimaryTableRow)
@@ -54,9 +56,10 @@ def init_db():
     if len(db.select(f"SELECT id FROM {db.PRIMARY_TABLE} LIMIT 1;")) == 0:
         passed, score = config.cfg.eval_fn(config.cfg.project_root)
         assert passed, "Baseline failed to pass evaluate()"
+        assert score > 0, "Evaluation function must be greater than 0"
         uuid = uuid7().hex
-        db.insert(PrimaryTableRow("Baseline", uuid, None, None, None, score))
         git.bootstrap(f"{config.cfg.branch_base}/{uuid}")
+        db.insert(PrimaryTableRow("Baseline", uuid, None, None, None, score))
     # Otherwise, verify all the branches still exist
     else:
         for _, uuid in db.select(f"SELECT id, uuid FROM {db.PRIMARY_TABLE};"):
@@ -91,13 +94,17 @@ def run_worker():
             return # Do not add the broken child to the database as reference
 
         child.score = score
+
+        if not child.score > 0:
+            raise 
+
         child.name = llm.get_attempt_name(workspace)
 
         db.insert(child)
     finally:
         git.delete_workspace(workspace)
 
-def run_iterations():
+def run_iterations() -> int:
     with ThreadPoolExecutor(max_workers=config.cfg.concurrency) as pool:
         pending = [
             pool.submit(run_worker)
@@ -120,10 +127,12 @@ def run_iterations():
                             print(f"A worker raised {type(e)}. Exiting...")
                             logging.log(logging.WARNING, "Cancelling future threads and waiting for pool shutdown")
                             pool.shutdown(wait=True, cancel_futures=True)
-                            return
+                            return 1
+    return 0
 
 if __name__ == "__main__":
     config.cfg = config.Config(build_parser().parse_args())
     check_requirements()
     init_db()
-    run_iterations()
+    exit_code = run_iterations()
+    exit(exit_code)

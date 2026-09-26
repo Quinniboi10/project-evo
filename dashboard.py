@@ -60,6 +60,7 @@ def calculate_node_depth(db: Database, id: int) -> int:
 
 @app.get("/api/row/<id>")
 def row_data(id: int):
+    id = int(id) # To prevent SQL injections; it's better to error than wipe the DB
     db = Database(DB_FILE, PrimaryTableRow, True)
     match = db.select(f"SELECT * FROM {db.PRIMARY_TABLE} WHERE id = {id};")[0]
 
