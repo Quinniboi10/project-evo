@@ -75,6 +75,9 @@ configuration is currently checked in.
 Style matching does not require reproducing typos, bugs or unsafe behavior.
 Keep functional fixes focused and avoid unrelated cleanup.
 
+Always keep `README.md` edits short and concise, matching the rest of the file.
+Include essential usage and configuration details; avoid implementation walkthroughs.
+
 ## Behavioral constraints
 
 - Evaluators implement `evaluate(workspace: Path) -> tuple[bool, float]`; successful
@@ -89,6 +92,13 @@ Keep functional fixes focused and avoid unrelated cleanup.
 - Preserve CLI arguments, output contracts, configuration keys and database
   compatibility unless the task requires changes; update relevant documentation
   and examples when those interfaces change.
+- Increment `version_string` in `main.py` when changing functionality: bump the
+  last component for bug fixes, middle component for intermediate features or
+  improvements, and major component only for huge features or fundamental project
+  advances (think `torch.compile`). A compatibility break alone does not require a
+  major bump; document migration requirements separately. Reset lower components
+  when bumping a higher one. Bump once per coherent change, not per file or edit.
+  Documentation-only and test-only changes do not require a bump.
 - `playground/`, `.venv/`, logs, caches and generated visualizations are local
   artifacts, not source. Do not modify or commit them as part of routine changes.
 
@@ -98,6 +108,12 @@ The smoke tests use standard-library unittest. Run them with
 `python3 -m unittest discover -s tests -v` in a Python 3.14+ environment.
 Choose focused checks for the behavior being changed and report what was run.
 
+- Changed Python files, including tests, must have no Pyright errors or warnings.
+  Run Pyright against those files with Python 3.14+ and the project's dependency
+  environment; passing runtime tests alone is not sufficient. Fix typing issues
+  instead of adding blanket suppressions. In tests, keep explicit `Mock` references
+  for mock-only attributes such as `call_count` and `assert_called_once_with`.
+  Report the checked files and results; if Pyright cannot run, state that limitation.
 - Install dependencies with `python3 -m pip install -r requirements.txt` when
   needed, using a Python 3.14+ environment.
 - `python3 main.py -h`, `python3 dashboard.py -h` and

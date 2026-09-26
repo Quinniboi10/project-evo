@@ -1,5 +1,5 @@
 from error import assert_config, assert_eval, KillWorkerException
-from prompt import build_prompt, build_run_fix_prompt
+from prompt import build_prompt, build_run_fix_prompt, build_inspiration_context
 from database import Database, PrimaryTableRow
 from task import Task
 import config
@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 random.seed(42)
 
-version_string = f"Project Evo 1.0.0"
+version_string = f"Project Evo 1.1.0"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -82,7 +82,8 @@ def run_worker():
     workspace = git.create_new_workspace(parent, child)
 
     try:
-        prompt = build_prompt(parent, child)
+        inspirations = build_inspiration_context(parent, db.sample_inspirations(parent, config.cfg.inspiration_count))
+        prompt = build_prompt(parent, child, inspirations)
         child.model = llm.route_prompt(workspace, prompt, task)
 
         passed, score = config.cfg.eval_fn(workspace)

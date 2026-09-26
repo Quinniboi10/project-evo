@@ -24,7 +24,7 @@ class TableRow():
 
 class PrimaryTableRow(TableRow):
     def __init__(self, name: str, uuid: str, model: Optional[str], task: Optional[Task], parent_id: Optional[int], score: float):
-        self.id = None # SQLite will autofill becuase of AUTOINCREMENT
+        self.id: Optional[int] = None # SQLite will autofill becuase of AUTOINCREMENT
         self.name = name
         self.uuid = uuid
         self.model = model
@@ -45,10 +45,10 @@ class PrimaryTableRow(TableRow):
         args = [repr(a) for a in args]
         return f"{type(self).__name__}({", ".join(args)})"
 
-class Database():
+class Database[Row: TableRow]():
     PRIMARY_TABLE = "evolve"
     
-    def __init__(self, file: str|Path, row_type: type[TableRow], require_exist: bool=False):
+    def __init__(self, file: str|Path, row_type: type[Row], require_exist: bool=False):
         assert_db(issubclass(row_type, TableRow), "Table rows must be derived from the TableRow object")
 
         if not isinstance(file, Path):
@@ -125,7 +125,25 @@ class Database():
 
         return int(last) - int(best)
 
-    def weighted_sample(self) -> TableRow:
+    def sample_inspirations(self, parent: PrimaryTableRow, limit: int) -> list[Row]:
+        if limit <= 0:
+            return []
+
+        matches = self.cursor.execute(f"SELECT * FROM {self.PRIMARY_TABLE} WHERE id != ? ORDER BY score DESC, id ASC", (parent.id,)).fetchall()
+        columns = [col[0] for col in self.cursor.description]
+        if not matches:
+            return []
+
+        chosen = matches[:1] + random.sample(matches[1:], min(limit - 1, len(matches) - 1))
+        rows = []
+        for match in chosen:
+            row = self.row_type.__new__(self.row_type)
+            for col, val in zip(columns, match):
+                setattr(row, col, val)
+            rows.append(row)
+        return rows
+
+    def weighted_sample(self) -> Row:
         # Get (id, score) pairs
         samples = self.select(f"SELECT id, score FROM {self.PRIMARY_TABLE}")
 

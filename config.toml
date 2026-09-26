@@ -1,6 +1,7 @@
 [general]
 temperature = 0.05 # Softmax temperature to use when selecting what to explore
 concurrency = 5    # Number of concurrent threads to run
+inspiration_count = 2 # Maximum reference attempts per prompt; 0 disables inspiration
 
 max_fix_attempts = 3     # Maximum number of times to allow the LLM to try to fix a workspace
 llm_timeout_sec  = 10800 # Maximum time to wait before killing the LLM

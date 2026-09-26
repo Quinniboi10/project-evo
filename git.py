@@ -8,6 +8,22 @@ from pathlib import Path
 import subprocess
 
 workspace_locks: dict[Path, Lock] = {}
+INSPIRATION_DIFF_LIMIT = 12_000
+
+def inspiration_diff(parent: PrimaryTableRow, reference: PrimaryTableRow) -> str:
+    parent_ref = f"refs/heads/{config.cfg.branch_base}/{parent.uuid}"
+    reference_ref = f"refs/heads/{config.cfg.branch_base}/{reference.uuid}"
+    with workspace_locks.setdefault(config.cfg.project_root, Lock()):
+        result = subprocess.run(
+            ["git", "diff", "--no-ext-diff", "--no-textconv", "--no-color", parent_ref, reference_ref, "--", ".", ":(top,exclude)name.txt"],
+            cwd=config.cfg.project_root, text=True, encoding="utf-8", errors="replace", capture_output=True, check=True
+        )
+    diff = result.stdout
+    if len(diff) > INSPIRATION_DIFF_LIMIT:
+        marker = "[Diff truncated; remaining changes omitted.]\n"
+        prefix = diff[:INSPIRATION_DIFF_LIMIT - len(marker)]
+        diff = prefix[:prefix.rfind("\n") + 1] + marker
+    return diff
 
 def exec_in_workspace(workspace: Path, cmd: str):
     with workspace_locks.setdefault(workspace, Lock()):

@@ -30,6 +30,7 @@ class Config:
     def _sanitize_inputs(self):
         assert_config(self.softmax_temp > 0, "Softmax temperature must be greater than 0")
         assert_config(len(self.objective) > 0, "Objective does not exist")
+        assert_config(type(self.inspiration_count) is int and self.inspiration_count >= 0, "general.inspiration_count is required and must be a nonnegative integer")
 
         max_concurrency = 0
         for model in self._routing.values():
@@ -69,6 +70,7 @@ class Config:
         self.concurrency      = int(self.config["general"]["concurrency"])
         self.max_fix_attempts = int(self.config["general"]["max_fix_attempts"])
         self.llm_timeout_sec  = int(self.config["general"]["llm_timeout_sec"])
+        self.inspiration_count = self.config["general"].get("inspiration_count")
 
         self.branch_base    = self.config["git"]["branch_base"]
         self.workspace_base = self.config["git"]["workspace_base"]

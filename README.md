@@ -34,6 +34,14 @@ Arguments
 where the boolean represents if the test succeeded, and the float represents the score (greater than 0) of the workspace  
 ***EVALUATE SHOULD BE NONDESTRICTUVE AS IT WILL BE CALLED ON THE PROJECT ROOT DIRECTORY TO ESTABLISH A BASELINE***
 
+### Exploration and inspiration
+
+Each attempt starts from one "parent" workspace. Exploration (30%) tries alternative approaches; improvement refines the current implementation.
+
+- Set `[general].inspiration_count` in `config.toml` to limit reference attempts per prompt (`0` to disable). This number must be nonnegative.
+- References use the best-scoring alternative, then random remaining alternatives without duplicates, subject to availability.
+- Scores and diffs are included directly in prompts, so agents need no Git access. Each attempt retains one parent.
+
 ### Smoke runs
 
 Run `python3 main.py --smoke -i 12 --debug` to check worktrees, commits, database storage, routing and logging without querying LLMs. Requires Git.
@@ -54,4 +62,6 @@ Tests: `python3 -m unittest discover -s tests -v`
 Pre-commit git hooks that fail will interfere with the automatic code commits
 
 ---
+Versions follow `MAJOR.MIDDLE.BUGFIX`: major for huge features, middle for intermediate improvements, and bugfix for fixes. Public releases may skip version numbers.
+
 While all code in this repository is built around LLMs, the core code itself was written entirely by me. After v1.0.0, agents were used to accelerate development.

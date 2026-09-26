@@ -153,6 +153,25 @@ sys.exit(smoke.run(args, run))
                 self.assertNotIn("SMOKE PASSED", result.stdout)
                 self.assertTrue((artifacts / "logs" / "project-evo.log").exists())
 
+    def test_configured_inspiration_counts(self):
+        for count in (0, 1, 3):
+            with self.subTest(count=count):
+                self.config.write_text((ROOT / "config.toml").read_text().replace("inspiration_count = 2", f"inspiration_count = {count}").replace("concurrency = 5", "concurrency = 1"))
+                result, artifacts = self.run_smoke("-i", "6", "--debug")
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                log = (artifacts / "logs" / "project-evo.log").read_text()
+                counts = [section.count("BEGIN INSPIRATION REFERENCE") for section in log.split("OUTBOUND:")[1:]]
+                self.assertEqual(max(counts), count)
+
+    def test_invalid_or_missing_inspiration_count(self):
+        for value in ("-1", "1.5", "true", '"2"', None):
+            with self.subTest(value=value):
+                replacement = f"inspiration_count = {value}" if value is not None else "# inspiration_count omitted"
+                self.config.write_text((ROOT / "config.toml").read_text().replace("inspiration_count = 2", replacement))
+                result, _ = self.run_smoke("-i", "1")
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("general.inspiration_count is required and must be a nonnegative integer", result.stdout)
+
 class RoutingTests(unittest.TestCase):
     def setUp(self):
         cfg = SimpleNamespace(
@@ -165,7 +184,10 @@ class RoutingTests(unittest.TestCase):
         self.cfg = cfg
         self.query = cfg.args.smoke_session.query
         self.query.return_value = subprocess.CompletedProcess(["smoke"], 0, "simulated", "")
-        for context in (patch.object(config, "cfg", cfg), patch.dict(llm.running_processes, {}, clear=True), patch.object(git, "autocommit"), patch.object(llm, "_codex"), patch.object(llm, "_opencode")):
+        self.autocommit = Mock()
+        self.codex = Mock()
+        self.opencode = Mock()
+        for context in (patch.object(config, "cfg", cfg), patch.dict(llm.running_processes, {}, clear=True), patch.object(git, "autocommit", self.autocommit), patch.object(llm, "_codex", self.codex), patch.object(llm, "_opencode", self.opencode)):
             context.start()
             self.addCleanup(context.stop)
 
@@ -177,8 +199,8 @@ class RoutingTests(unittest.TestCase):
         llm.running_processes["explore"] = 1
         self.assertEqual(llm.route_prompt(Path("workspace"), "prompt", Task.EXPLORE), "fallback")
         self.assertEqual(llm.running_processes["fallback"], 0)
-        llm._codex.assert_not_called()
-        llm._opencode.assert_not_called()
+        self.codex.assert_not_called()
+        self.opencode.assert_not_called()
 
     def test_nonzero_timeout_and_unsupported_adapter(self):
         self.query.return_value = subprocess.CompletedProcess(["smoke"], 2, "out", "error")
@@ -190,13 +212,12 @@ class RoutingTests(unittest.TestCase):
         with self.assertRaises(KillPoolException):
             llm.route_prompt(Path("workspace"), "prompt", Task.IMPROVE)
         self.assertEqual(llm.running_processes["improve"], 0)
-        self.assertEqual(git.autocommit.call_count, 3)
+        self.assertEqual(self.autocommit.call_count, 3)
 
     def test_normal_mode_uses_real_adapter_boundary(self):
         self.cfg.args.smoke = False
-        for adapter in ("codex", "opencode"):
+        for adapter, mock in (("codex", self.codex), ("opencode", self.opencode)):
             self.cfg.adapter = lambda model: adapter
-            mock = getattr(llm, f"_{adapter}")
             mock.return_value = subprocess.CompletedProcess([adapter], 0, "out", "")
             llm.route_prompt(Path("workspace"), "prompt", Task.IMPROVE)
             mock.assert_called_once()
@@ -226,11 +247,12 @@ class WorkerFailureTests(unittest.TestCase):
 
     def test_workspace_cleanup_on_evaluation_error(self):
         from database import PrimaryTableRow
-        cfg = SimpleNamespace(db_file="unused", eval_fn=Mock(side_effect=RuntimeError("evaluation failed")))
+        cfg = SimpleNamespace(db_file="unused", inspiration_count=2, eval_fn=Mock(side_effect=RuntimeError("evaluation failed")))
         parent = PrimaryTableRow("Baseline", "baseline", None, None, None, 1)
         parent.id = 1
         with patch.object(config, "cfg", cfg), patch.object(main, "Database") as database, patch.object(git, "create_new_workspace", return_value=Path("workspace")), patch.object(git, "delete_workspace") as cleanup, patch.object(llm, "route_prompt"), patch.object(main, "build_prompt", return_value="prompt"):
             database.return_value.weighted_sample.return_value = parent
+            database.return_value.sample_inspirations.return_value = []
             with self.assertRaisesRegex(RuntimeError, "evaluation failed"):
                 main.run_worker()
             cleanup.assert_called_once_with(Path("workspace"))
