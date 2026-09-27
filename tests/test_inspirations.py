@@ -2,7 +2,7 @@ from database import Database, PrimaryTableRow
 from task import Task
 import config
 import git
-import main
+import evolve
 import prompt
 import smoke
 
@@ -178,10 +178,10 @@ class InspirationPromptTests(unittest.TestCase):
         cleanup = Mock()
         diff = Mock(return_value="-old\n+new\n")
         route = Mock(return_value="model")
-        with patch.object(main, "Database", database), patch.object(git, "create_new_workspace", return_value=Path("workspace")), patch.object(git, "delete_workspace", cleanup), patch.object(git, "inspiration_diff", diff), patch.object(main.llm, "route_prompt", route), patch.object(main.llm, "get_attempt_name", return_value="Attempt"):
+        with patch.object(evolve, "Database", database), patch.object(git, "create_new_workspace", return_value=Path("workspace")), patch.object(git, "delete_workspace", cleanup), patch.object(git, "inspiration_diff", diff), patch.object(evolve.llm, "route_prompt", route), patch.object(evolve.llm, "get_attempt_name", return_value="Attempt"):
             database.return_value.weighted_sample.return_value = self.parent
             database.return_value.sample_inspirations.return_value = [self.reference]
-            main.run_worker(0)
+            evolve.run_worker(0)
         database.return_value.sample_inspirations.assert_called_once_with(self.parent, 3, 0, 0.1)
         diff.assert_called_once_with(self.parent, self.reference)
         self.assertEqual(route.call_count, 2)

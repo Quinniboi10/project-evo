@@ -6,7 +6,8 @@ Project Evo uses coding-agent CLIs to improve a target Git repository, evaluates
 attempts in isolated worktrees, and records their ancestry and scores in SQLite.
 The runtime requires Python 3.14 or newer; dependencies are in `requirements.txt`.
 
-- `main.py`: argument parsing, baseline initialization, worker pool, evaluation and retries.
+- `main.py`: unified CLI entry point and subcommand routing.
+- `evolve.py`: evolution argument parsing, baseline initialization, worker pool, evaluation and retries.
 - `config.py` / `config.toml`: configuration loading, validation and provider routing settings.
 - `llm.py`: Codex/OpenCode subprocess adapters and provider concurrency accounting.
 - `git.py`: branches, worktrees, automatic commits and workspace locks.
@@ -21,7 +22,7 @@ The runtime requires Python 3.14 or newer; dependencies are in `requirements.txt
 
 The user's existing code style is the standard for **all new code and changes**.
 Follow the nearest comparable code in the module; for new Python modules, use
-`main.py`, `config.py`, `database.py` and `llm.py` as references. Preserve local
+`evolve.py`, `config.py`, `database.py` and `llm.py` as references. Preserve local
 variations instead of normalizing the repository. Do not run broad formatting,
 import sorting or style-only rewrites unless requested. No formatter or linter
 configuration is currently checked in.
@@ -126,7 +127,7 @@ Choose focused checks for the behavior being changed and report what was run.
 - Full evolution runs launch external agents and create branches, commits and
   worktrees in the target project. Use them only when needed for the task and
   with an appropriate disposable target; they are not routine smoke tests.
-- `python3 main.py --smoke -i 12 --debug` exercises real Git and SQLite with
+- `python3 main.py run --smoke -i 12 --debug` exercises real Git and SQLite with
   simulated agents and evaluation. It retains artifacts in a printed temporary
   directory and never uses the supplied project or evaluator.
 - Verify dashboard changes in the browser when layout or interaction changes.

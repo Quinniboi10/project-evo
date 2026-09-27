@@ -11,13 +11,13 @@ import argparse
 
 from flask import Flask, jsonify, current_app, abort
 
-app = Flask(__name__, static_folder="dashboard")
+app = Flask(__name__, static_folder=str(Path(__file__).resolve().parent / "dashboard"))
 
 DB_FILE = cast(Path, None)
 
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(add_help: bool=True) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-                    prog=version_string,
+                    prog=version_string, add_help=add_help,
                     description="MCTS-inspired code improvement using LLMs")
     parser.add_argument("--db", help="Path to a database file to visualize", metavar="PATH", required=True)
  
@@ -97,8 +97,11 @@ def graph_data():
 def dashboard():
     return current_app.send_static_file("index.html")
 
-if __name__ == '__main__':
-    args = build_parser().parse_args()
+def run(args: argparse.Namespace):
+    global DB_FILE
     DB_FILE = Path(args.db).resolve(strict=True)
 
     app.run()
+
+if __name__ == '__main__':
+    run(build_parser().parse_args())

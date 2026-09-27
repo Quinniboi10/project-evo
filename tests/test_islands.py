@@ -2,7 +2,7 @@ from database import Database, PrimaryTableRow
 from error import ConfigError, DatabaseException, KillWorkerException
 from task import Task
 import config
-import main
+import evolve
 
 from argparse import Namespace
 from pathlib import Path
@@ -137,8 +137,8 @@ class IslandTests(unittest.TestCase):
             if len(calls) == 2:
                 raise KillWorkerException("replace island 1")
         cfg = SimpleNamespace(concurrency=1, iterations=6, island_count=4, gnhf=True)
-        with patch.object(config, "cfg", cfg), patch.object(main, "select_island", side_effect=[2, 1, 3, 3, 0, 2]), patch.object(main, "run_worker", side_effect=worker):
-            self.assertEqual(main.run_iterations(), 0)
+        with patch.object(config, "cfg", cfg), patch.object(evolve, "select_island", side_effect=[2, 1, 3, 3, 0, 2]), patch.object(evolve, "run_worker", side_effect=worker):
+            self.assertEqual(evolve.run_iterations(), 0)
         self.assertEqual(calls, [2, 1, 1, 3, 3, 0, 2])
 
 class IslandConfigTests(unittest.TestCase):

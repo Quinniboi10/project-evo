@@ -3,7 +3,7 @@ from task import Task
 import config
 import git
 import llm
-import main
+import evolve
 import smoke
 
 from pathlib import Path
@@ -243,10 +243,10 @@ class RoutingTests(unittest.TestCase):
     def test_agent_requirements_are_skipped_only_in_smoke_mode(self):
         self.cfg.models = {"improve"}
         with patch("shutil.which", side_effect=lambda name: "/usr/bin/git" if name == "git" else None):
-            main.check_requirements()
+            evolve.check_requirements()
             self.cfg.args.smoke = False
             with self.assertRaises(KillPoolException):
-                main.check_requirements()
+                evolve.check_requirements()
 
 class WorkerFailureTests(unittest.TestCase):
     def test_terminal_failure_cancels_queued_work_and_waits(self):
@@ -259,8 +259,8 @@ class WorkerFailureTests(unittest.TestCase):
                 shutdown = Mock(side_effect=lambda **kwargs: queued.cancel() if kwargs["cancel_futures"] else None)
                 pool = SimpleNamespace(submit=submit, shutdown=shutdown)
                 cfg = SimpleNamespace(concurrency=2, iterations=4, gnhf=False)
-                with patch.object(config, "cfg", cfg), patch.object(main, "ThreadPoolExecutor", return_value=pool), patch.object(main, "select_island", return_value=0), patch.object(main, "wait", return_value=({failed}, {queued})):
-                    self.assertEqual(main.run_iterations(), 0 if error is KeyboardInterrupt else 1)
+                with patch.object(config, "cfg", cfg), patch.object(evolve, "ThreadPoolExecutor", return_value=pool), patch.object(evolve, "select_island", return_value=0), patch.object(evolve, "wait", return_value=({failed}, {queued})):
+                    self.assertEqual(evolve.run_iterations(), 0 if error is KeyboardInterrupt else 1)
                 self.assertEqual(submit.call_count, 2)
                 shutdown.assert_called_once_with(wait=True, cancel_futures=True)
                 self.assertTrue(queued.cancelled())
@@ -269,25 +269,25 @@ class WorkerFailureTests(unittest.TestCase):
         for gnhf, error, expected in ((False, KillWorkerException, 1), (True, KillWorkerException, 0), (False, KillPoolException, 1), (True, KillPoolException, 1), (True, RuntimeError, 1), (False, KeyboardInterrupt, 0)):
             with self.subTest(gnhf=gnhf, error=error):
                 cfg = SimpleNamespace(concurrency=1, iterations=1, island_count=4, gnhf=gnhf)
-                with patch.object(config, "cfg", cfg), patch.object(main, "select_island", return_value=0), patch.object(main, "run_worker", side_effect=[error("test"), None]) as worker:
-                    self.assertEqual(main.run_iterations(), expected)
+                with patch.object(config, "cfg", cfg), patch.object(evolve, "select_island", return_value=0), patch.object(evolve, "run_worker", side_effect=[error("test"), None]) as worker:
+                    self.assertEqual(evolve.run_iterations(), expected)
                     self.assertEqual(worker.call_count, 2 if gnhf and error is KillWorkerException else 1)
 
     def test_cancellation_while_waiting(self):
         cfg = SimpleNamespace(concurrency=1, iterations=1, island_count=4, gnhf=False)
-        with patch.object(config, "cfg", cfg), patch.object(main, "select_island", return_value=0), patch.object(main, "run_worker"), patch.object(main, "wait", side_effect=KeyboardInterrupt):
-            self.assertEqual(main.run_iterations(), 0)
+        with patch.object(config, "cfg", cfg), patch.object(evolve, "select_island", return_value=0), patch.object(evolve, "run_worker"), patch.object(evolve, "wait", side_effect=KeyboardInterrupt):
+            self.assertEqual(evolve.run_iterations(), 0)
 
     def test_workspace_cleanup_on_evaluation_error(self):
         from database import PrimaryTableRow
         cfg = SimpleNamespace(db_file="unused", inspiration_count=2, cross_island_inspiration_probability=0.1, eval_fn=Mock(side_effect=RuntimeError("evaluation failed")))
         parent = PrimaryTableRow("Baseline", "baseline", None, None, None, 1)
         parent.id = 1
-        with patch.object(config, "cfg", cfg), patch.object(main, "Database") as database, patch.object(git, "create_new_workspace", return_value=Path("workspace")), patch.object(git, "delete_workspace") as cleanup, patch.object(llm, "route_prompt"), patch.object(main, "build_prompt", return_value="prompt"):
+        with patch.object(config, "cfg", cfg), patch.object(evolve, "Database") as database, patch.object(git, "create_new_workspace", return_value=Path("workspace")), patch.object(git, "delete_workspace") as cleanup, patch.object(llm, "route_prompt"), patch.object(evolve, "build_prompt", return_value="prompt"):
             database.return_value.weighted_sample.return_value = parent
             database.return_value.sample_inspirations.return_value = []
             with self.assertRaisesRegex(RuntimeError, "evaluation failed"):
-                main.run_worker(0)
+                evolve.run_worker(0)
             cleanup.assert_called_once_with(Path("workspace"))
             database.return_value.insert_attempt.assert_not_called()
 

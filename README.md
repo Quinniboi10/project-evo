@@ -15,7 +15,15 @@ Then run `pip3 install -r requirements.txt`
 That's it! Check out the [usage](README.md#usage) to see how things are put together, or take a look at some of the [example scripts](README.md#examples)
 
 ### Usage
-Run `python3 main.py -h` to see the help menu
+Use `python3 main.py -h` for the unified CLI:
+
+```bash
+python3 main.py run PROJECT EVALUATOR --objective "Improve throughput" -i 20
+python3 main.py dashboard --db RUN.db
+python3 main.py visualize --db RUN.db --format svg
+```
+
+Run `python3 main.py run -h` for evolution options. The individual commands remain available through `evolve.py`, `dashboard.py` and `visualize.py`.
 
 Arguments
 - `project_path` - the path to the project to be optimized. This path should be the base of a git repository (required for proper function of workspaces)
@@ -48,11 +56,11 @@ Each attempt starts from one "parent" workspace. Exploration (30%) tries alterna
 
 ### Dashboard
 
-Run `python3 dashboard.py --db PATH` to open the lineage workbench. Filter populations, replay the global history, or explore the overall tree as it grows.
+Run `python3 main.py dashboard --db PATH` to open the lineage workbench. Filter populations, replay the global history, or explore the overall tree as it grows.
 
 ### Smoke runs
 
-Run `python3 main.py --smoke -i 12 --debug` to check worktrees, commits, database storage, routing and logging without querying LLMs. Requires Git.
+Run `python3 main.py run --smoke -i 12 --debug` to check worktrees, commits, database storage, routing and logging without querying LLMs. Requires Git.
 
 - Uses a synthetic project and evaluator; supplied project/evaluator paths are ignored, and the objective is optional
 - Keeps your config and run flags; `--db` and `--logfile` use only their filenames inside the temporary directory
