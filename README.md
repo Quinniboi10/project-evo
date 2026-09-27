@@ -48,7 +48,7 @@ Each attempt starts from one "parent" workspace. Exploration (30%) tries alterna
 
 ### Dashboard
 
-Run `python3 dashboard.py --db PATH` to view the ancestry tree. Island cards filter the graph; replay keeps a global timeline. Hover or select an attempt to reveal its inspiration links; rings mark the sources, including temporary references from other islands.
+Run `python3 dashboard.py --db PATH` to open the lineage workbench. Filter populations, replay the global history, or explore the overall tree as it grows.
 
 ### Smoke runs
 
@@ -60,6 +60,8 @@ Run `python3 main.py --smoke -i 12 --debug` to check worktrees, commits, databas
 - Prints `SMOKE PASSED` after verification and retains the repository, database and logs at the printed location for inspection and manual cleanup
 
 Tests: `python3 -m unittest discover -s tests -v`
+
+Dashboard tests: `node tests/test_dashboard.js`. Browser regressions: `node tests/test_dashboard_browser.js` (requires Playwright and Chromium).
 
 ### Examples
 - [Command runtime](examples/command-runtime/README.md) - Optimize toward minimal command runtime

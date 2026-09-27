@@ -24,35 +24,38 @@ class Element {
     replaceChildren(...elements) { this.children = []; this.append(...elements); }
     setAttribute(key, value) { this.attributes[key] = value; }
     addEventListener() {}
+    focus() {}
     remove() { this.parent.children = this.parent.children.filter(child => child !== this); }
     getBoundingClientRect() { return { left: 0, top: 0 }; }
 }
 
 class DataSet {
-    constructor(values) { this.data = new Map(values.map(value => [value.id, value])); }
+    constructor(values) { this.data = new Map(values.map(value => [value.id, value])); this.onChange = () => {}; }
     get(id) { return id === undefined ? [...this.data.values()] : this.data.get(id); }
     getIds() { return [...this.data.keys()]; }
-    update(values) { for (const value of values) this.data.set(value.id, value); }
-    remove(ids) { for (const id of ids) this.data.delete(id); }
+    update(values) { for (const value of values) this.data.set(value.id, { ...this.data.get(value.id), ...value }); this.onChange(); }
+    remove(ids) { for (const id of ids) this.data.delete(id); this.onChange(); }
 }
 
 class Network {
-    constructor() { this.handlers = {}; this.position = { x: 42, y: 17 }; this.scale = 0.8; }
+    constructor(_, data) { this.handlers = {}; this.data = data; this.position = { x: 42, y: 17 }; this.scale = 0.8; data.nodes.onChange = data.edges.onChange = () => this.redraw(); }
     on(event, handler) { this.handlers[event] = handler; }
     getViewPosition() { return { ...this.position }; }
     getScale() { return this.scale; }
-    getPositions(ids) { return Object.fromEntries(ids.map(id => [id, { x: id * 50, y: id * 20 }])); }
+    getPositions(ids = this.data.nodes.getIds()) { return Object.fromEntries(ids.filter(id => this.data.nodes.get(id)).map(id => [id, { x: id * 50, y: id * 20 }])); }
     canvasToDOM(point) { return point; }
     moveTo({ position, scale }) { this.position = position; this.scale = scale; }
     unselectAll() {}
     setSelection() {}
-    setOptions() {}
+    setOptions() { this.redraw(); }
+    redraw() { this.handlers.afterDrawing?.(); }
     fit() {}
     focus() {}
 }
 
 const elements = new Map();
 const document = {
+    fonts: { ready: Promise.resolve() },
     getElementById(id) {
         if (!elements.has(id)) elements.set(id, new Element());
         return elements.get(id);
@@ -62,7 +65,7 @@ const document = {
     addEventListener() {}
 };
 const context = vm.createContext({
-    document, window: { addEventListener() {} }, vis: { DataSet, Network },
+    document, getComputedStyle: () => ({ getPropertyValue: () => "#a5aaa7" }), window: { addEventListener() {}, matchMedia: () => ({ matches: true }) }, vis: { DataSet, Network },
     innerWidth: 1000, innerHeight: 700, setTimeout() {}, clearTimeout() {},
     setInterval() {}, clearInterval() {}, AbortSignal, AbortController,
     fetch: () => new Promise(() => {}), console, performance
@@ -83,7 +86,7 @@ const graph = {
 run(`receiveGraph(${JSON.stringify(graph)})`);
 assert.deepEqual(result("nodes.getIds()"), [1, 2, 3]);
 assert.equal(elements.get("island-overview").children.length, 4);
-assert.match(elements.get("island-overview").children[3].lastChild.textContent, /No successful attempts yet/);
+assert.match(elements.get("island-overview").children[3].lastChild.textContent, /Best 10/);
 elements.get("island-overview").children[1].onclick();
 assert.deepEqual(result("nodes.getIds()"), [1, 3]);
 assert.equal(Number(run("step.value")), 2);
@@ -103,7 +106,7 @@ assert.equal(elements.get("inspiration-overlay").children.length, 0);
 run("step.value = 0; showAttempt()");
 assert.deepEqual(result("nodes.getIds()"), [1]);
 assert.equal(run("best.id"), 1);
-assert.match(elements.get("island-overview").children[1].lastChild.textContent, /best 10/);
+assert.match(elements.get("island-overview").children[1].lastChild.textContent, /Best 10/);
 run("selectedIsland = null; step.value = 2; showAttempt(); showPopup(3, {x: 150, y: 100})");
 assert.equal(elements.get("inspiration-overlay").children.filter(child => child.tag === "g").length, 0);
 assert.equal(elements.get("inspiration-overlay").children.filter(child => child.tag === "circle").length, 1);
@@ -134,3 +137,69 @@ for (const node of legacy.nodes) node.island_ids = [];
 run(`receiveGraph(${JSON.stringify(legacy)})`);
 assert.equal(elements.get("island-overview").hidden, true);
 console.log("Dashboard state tests passed: filters, replay, hover overlays, viewport, and legacy view");
+
+async function testInspector() {
+    const requests = [];
+    context.fetch = (url, options) => new Promise(resolve => requests.push({ url, options, resolve }));
+    const flush = () => new Promise(resolve => setImmediate(resolve));
+    run(`receiveGraph(${JSON.stringify(graph)}); step.value = step.max; showAttempt(); selectAttempt(3)`);
+    assert.equal(elements.get("attempt-name").textContent, "Local");
+    assert.equal(elements.get("attempt-parent").textContent, "#1");
+    assert.equal(elements.get("attempt-ratio").textContent, "2.00× baseline");
+    assert.equal(elements.get("attempt-inspirations").textContent, "#2");
+    run("showPopup(2, {x: 10, y: 10})");
+    assert.equal(elements.get("attempt-name").textContent, "Local");
+    run("selectAttempt(2)");
+    assert.equal(requests[0].options.signal.aborted, true);
+    requests[0].resolve({ ok: true, json: async () => ({ id: 3, uuid: "stale", model: "stale" }) });
+    await flush();
+    assert.equal(elements.get("attempt-model").textContent, "—");
+    requests[1].resolve({ ok: true, json: async () => ({ id: 2, uuid: "foreign-id", model: "test-model", task: "EXPLORE" }) });
+    await flush();
+    assert.equal(elements.get("attempt-model").textContent, "test-model");
+    assert.equal(elements.get("attempt-task").textContent, "explore");
+    assert.equal(elements.get("attempt-inspirations").textContent, "No inspiration references");
+    assert.match(elements.get("row-values").textContent, /foreign-id/);
+    run(`receiveGraph(${JSON.stringify(updated)})`);
+    assert.equal(run("selectedNodeId"), 2);
+    assert.equal(elements.get("attempt-model").textContent, "test-model");
+    run("chooseIsland(0)");
+    assert.equal(run("selectedNodeId"), null);
+    assert.equal(elements.get("inspector-content").hidden, true);
+    run("selectAttempt(3)");
+    requests[2].resolve({ ok: false });
+    await flush();
+    assert.equal(elements.get("retry-row").hidden, false);
+    assert.match(elements.get("row-status").textContent, /Could not load/);
+    elements.get("retry-row").onclick();
+    requests[3].resolve({ ok: true, json: async () => ({ id: 3, uuid: "local-id", model: null, task: "IMPROVE" }) });
+    await flush();
+    assert.equal(elements.get("retry-row").hidden, true);
+    assert.equal(elements.get("attempt-model").textContent, "Not recorded");
+    run("step.value = 0; showAttempt()");
+    assert.equal(run("selectedNodeId"), null);
+    elements.get("latest").onclick();
+    assert.equal(Number(run("step.value")), Number(run("step.max")));
+    assert.equal(elements.get("latest").disabled, true);
+    run("network.scale = 0.3; updateNodeLabels()");
+    assert.equal(run("nodes.get(3).label"), "");
+    assert.equal(run("nodes.get(best.id).label"), "");
+    assert.equal(run("nodes.get(1).label"), "");
+    assert.equal(run("nodes.get(best.id).font.size * network.getScale()"), 12);
+    run("hoveredNodeId = 3; updateNodeLabels()");
+    assert.notEqual(run("nodes.get(3).label"), "");
+    assert.equal(run("nodes.get(1).label"), "");
+    run("hoveredNodeId = null; network.scale = 0.7; updateNodeLabels()");
+    assert.equal(run("visibleGraph.nodes.every(node => nodes.get(node.id).label.length > 0)"), true);
+    run("isLive = true; lastUpdated = Date.now(); updateLiveStatus()");
+    assert.equal(elements.get("live-status").textContent, "Connected");
+    run("isLive = false; updateLiveStatus()");
+    assert.equal(elements.get("live-status").textContent, "Reconnecting…");
+    run("selectAttempt(3); selectAttempt(null)");
+    requests.at(-1).resolve({ ok: true, json: async () => ({ id: 3, uuid: "late", model: "late" }) });
+    await flush();
+    assert.equal(run("rowData"), null);
+    console.log("Inspector tests passed: selection, stale requests, errors, retry, history, labels, and connection status");
+}
+
+testInspector().catch(error => { console.error(error); process.exitCode = 1; });

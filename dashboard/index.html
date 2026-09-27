@@ -1,134 +1,70 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Project Evo</title>
-
-    <script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
-
-    <style>
-        html, body {
-            margin: 0;
-            width: 100%;
-            height: 100%;
-            background: #101722;
-            color: #e2e8f0;
-            font: 15px system-ui, sans-serif;
-        }
-
-        body {
-            display: flex;
-            flex-direction: column;
-        }
-
-        header { padding: 20px 24px 12px; }
-        h1 { font-size: 23px; margin: 0 0 8px; font-weight: 600; }
-        #summary, #live-status { color: #aab8cd; line-height: 1.5; }
-
-        .toolbar {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-top: 12px;
-            align-items: center;
-        }
-
-        .timeline { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 220px; }
-        #step { flex: 1; min-width: 80px; accent-color: #34d399; }
-        #step-label { min-width: 7ch; text-align: right; font-variant-numeric: tabular-nums; }
-        .view-controls { display: flex; gap: 10px; margin-left: auto; }
-
-        button {
-            background: #233047;
-            color: #e2e8f0;
-            border: 1px solid #51627a;
-            border-radius: 6px;
-            padding: 8px 12px;
-            font: inherit;
-            cursor: pointer;
-        }
-
-        button:hover:not(:disabled) { background: #30415c; }
-        button:focus-visible { outline: 2px solid #34d399; outline-offset: 3px; }
-        button:disabled { opacity: 0.5; cursor: default; }
-
-        #island-overview { display: flex; gap: 8px; overflow-x: auto; padding: 12px 0 4px; }
-        #island-overview[hidden] { display: none; }
-        .island-card { flex-shrink: 0; text-align: left; border-top: 3px solid var(--island-color, #94a3b8); }
-        .island-card[aria-pressed="true"] { background: #30415c; outline: 1px solid #e2e8f0; }
-        .island-card small { display: block; color: #aab8cd; margin-top: 4px; }
-        #graph-container { position: relative; flex: 1; min-height: 0; }
-        #inspiration-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; }
-        #legend { color: #aab8cd; font-size: 12px; margin-top: 8px; }
-        #graph {
-            width: 100%;
-            height: 100%;
-        }
-
-        #node-popup {
-            position: fixed;
-            z-index: 10;
-            max-width: min(360px, calc(100vw - 32px));
-            white-space: normal;
-            overflow-wrap: anywhere;
-            padding: 10px 12px;
-            background: #233047;
-            color: #e2e8f0;
-            border: 1px solid #51627a;
-            border-radius: 6px;
-            font: 14px/1.5 system-ui, sans-serif;
-            box-shadow: 0 8px 24px #0006;
-        }
-        #node-popup button { margin-top: 8px; }
-        dialog { width: min(800px, calc(100vw - 64px)); max-height: 80vh; background: #182233; color: #e2e8f0; border: 1px solid #51627a; border-radius: 8px; }
-        dialog::backdrop { background: #0008; }
-        .dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-        .dialog-heading h2 { margin: 0; font-size: 20px; }
-        #row-values { white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.6 monospace; }
-    </style>
+    <meta name="theme-color" content="#151719">
+    <title>Project Evo · Lineage</title>
+    <link rel="stylesheet" href="/dashboard/style.css">
+    <script src="https://unpkg.com/vis-network@10.1.2/standalone/umd/vis-network.min.js"></script>
 </head>
-
 <body>
-    <header>
-        <h1>Project Evo · exploration tree</h1>
-        <div id="summary" role="status">Loading graph…</div>
-        <div id="live-status">OFFLINE - Last updated: never</div>
-        <div id="island-overview" role="group" aria-label="Island filter" hidden></div>
-        <div id="legend">Diamond: best attempt · Green edges: best ancestry · Dashed arrows: inspiration · Rings: inspiration sources</div>
-        <div class="toolbar" role="group" aria-label="Graph navigation">
-            <div class="timeline">
-                <button id="replay" type="button" disabled>Replay</button>
-                <label for="step">Attempt</label>
-                <input id="step" type="range" min="0" max="0" value="0" step="1" disabled>
-                <output id="step-label" for="step">0 / 0</output>
-            </div>
-            <div class="view-controls">
-                <button id="fit" type="button" disabled>Fit all</button>
-                <button id="best" type="button" disabled>Focus best</button>
-            </div>
-        </div>
+    <header class="app-header">
+        <a class="brand" href="/" aria-label="Project Evo home">
+            <svg class="brand-mark" viewBox="0 0 28 28" aria-hidden="true"><path d="M5 23V5m0 9h9l9-9M5 23h9l9-9"/><circle cx="5" cy="5" r="2"/><circle cx="23" cy="5" r="2"/><circle cx="23" cy="14" r="2"/></svg>
+            <span>evo<span class="brand-period">.</span></span>
+        </a>
+        <div class="view-title">Evolution workbench <span>/</span> <h1>Lineage</h1></div>
+        <div class="connection" role="status"><span id="connection-dot"></span><span id="live-status">Connecting</span><span id="last-refresh">Waiting for first snapshot</span></div>
     </header>
-    <div id="graph-container">
-        <div id="graph"></div>
-        <svg id="inspiration-overlay" aria-hidden="true"></svg>
+    <div class="workbench">
+        <aside class="population-rail" aria-label="Populations">
+            <div class="section-heading">Populations <span id="island-count">—</span></div>
+            <div id="island-overview" role="group" aria-label="Island filter" hidden></div>
+            <p id="legacy-note" hidden>This run has no island metadata.<br>Showing the complete lineage.</p>
+        </aside>
+        <main class="workspace">
+            <section class="metrics" aria-label="Results in current view">
+                <div class="scope"><span class="small-label">Current view</span><strong id="scope-label">All populations</strong><span id="scope-time">Latest snapshot</span></div>
+                <div><span class="small-label">Best score</span><strong class="metric-value" id="best-score">—</strong><span id="best-id">No attempts yet</span></div>
+                <div><span class="small-label">Over baseline</span><strong class="metric-value positive" id="best-ratio">—</strong></div>
+                <div><span class="small-label">Successful attempts</span><strong class="metric-value" id="attempt-count">—</strong><span>Excludes baseline</span></div>
+            </section>
+            <div class="graph-toolbar" role="group" aria-label="Graph navigation">
+                <label class="mobile-islands" for="island-select">Population <select id="island-select"><option value="all">All populations</option></select></label>
+                <span id="summary" class="graph-caption" role="status">Loading lineage…</span>
+                <div class="view-controls"><button id="fit" type="button" disabled>Fit all</button><button id="best" class="primary" type="button" disabled>Focus best</button><button id="inspect-toggle" type="button" aria-controls="inspector" aria-expanded="false">Inspect</button></div>
+            </div>
+            <div id="graph-container">
+                <div id="graph" role="img" aria-label="Attempt ancestry graph. Use the attempt selector in the inspector to explore without a pointer."></div>
+                <svg id="band-overlay" aria-hidden="true"></svg>
+                <svg id="inspiration-overlay" aria-hidden="true"></svg>
+                <div id="graph-empty" class="empty-state"><h2>No attempts yet</h2><p id="empty-message">Waiting for the first snapshot.</p></div>
+                <div id="legend" aria-label="Graph legend"><span><i class="legend-diamond"></i> Best</span><span><i class="legend-line"></i> Best ancestry</span><span><i class="legend-dash"></i> Inspiration</span><span><i class="legend-ring"></i> Source</span></div>
+            </div>
+            <footer class="transport" aria-label="Global replay controls">
+                <button id="replay" type="button" disabled>Replay</button>
+                <div class="timeline"><div class="timeline-heading"><label for="step">Global attempt history</label><output id="step-label" for="step">0 / 0</output></div><input id="step" type="range" min="0" max="0" value="0" step="1" disabled></div>
+                <button id="latest" type="button" disabled>Latest <span aria-hidden="true">↗</span></button>
+            </footer>
+        </main>
+        <aside id="inspector" class="inspector" aria-label="Attempt inspector" data-open="false">
+            <div class="inspector-heading"><span class="section-heading">Inspector</span><button id="close-inspector" type="button" aria-label="Close inspector">Close</button></div>
+            <label class="small-label" for="attempt-select">Select an attempt</label>
+            <select id="attempt-select"><option value="">Choose from the graph</option></select>
+            <div id="inspector-empty"></div>
+            <div id="inspector-content" hidden>
+                <div class="attempt-heading"><span id="row-heading" class="small-label"></span><button id="clear-selection" type="button">Clear</button></div>
+                <h2 id="attempt-name"></h2>
+                <div class="inspector-score"><span class="small-label">Score</span><strong id="attempt-score"></strong><span id="attempt-ratio"></span></div>
+                <dl class="properties"><dt>Population</dt><dd id="attempt-island"></dd><dt>Parent</dt><dd id="attempt-parent"></dd><dt>Strategy</dt><dd id="attempt-task"></dd><dt>Model</dt><dd id="attempt-model"></dd><dt>UUID</dt><dd id="attempt-uuid" class="mono"></dd></dl>
+                <section class="inspiration-section"><h3>Inspiration</h3><p id="attempt-inspirations"></p></section>
+                <p id="row-status" role="status"></p><button id="retry-row" type="button" hidden>Retry details</button>
+                <details id="raw-data"><summary>Raw data</summary><pre id="row-values"></pre></details>
+            </div>
+        </aside>
     </div>
-
-    <div id="node-popup" hidden>
-        <strong id="popup-name"></strong>
-        <div id="popup-score"></div>
-        <div id="popup-island"></div>
-        <div id="popup-inspirations"></div>
-        <button id="show-row" type="button">Show all values</button>
-    </div>
-    <dialog id="row-dialog" aria-labelledby="row-heading">
-        <div class="dialog-heading">
-            <h2 id="row-heading">Row data</h2>
-            <button id="close-row" type="button">Close</button>
-        </div>
-        <pre id="row-values" aria-live="polite"></pre>
-        <button id="retry-row" type="button" hidden>Retry</button>
-    </dialog>
+    <div id="node-popup" role="tooltip" hidden><strong id="popup-name"></strong><div id="popup-score"></div><div id="popup-island"></div><div id="popup-inspirations"></div></div>
 
     <script>
         let network = null;
@@ -143,7 +79,17 @@
         let fullGraph = { nodes: [], edges: [] };
         let selectedIsland = null;
         let timelineNodes = [];
-        const islandColors = ["#60a5fa", "#c084fc", "#fb923c", "#2dd4bf", "#f472b6", "#a3e635", "#facc15", "#818cf8"];
+        const styles = getComputedStyle(document.documentElement);
+        const theme = Object.fromEntries(["canvas", "panel", "text", "muted", "border", "line", "accent", "positive"].map(name => [name, styles.getPropertyValue(`--${name}`).trim()]));
+        const islandColors = Array.from({ length: 8 }, (_, id) => styles.getPropertyValue(`--island-${id}`).trim());
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+        const animate = () => !reducedMotion.matches;
+        const inspector = document.getElementById("inspector");
+        const attemptSelect = document.getElementById("attempt-select");
+        let visibleGraph = { nodes: [], edges: [] };
+        let rowData = null;
+        let updatingGraph = false;
+        let orderedLayout = null;
         const overlay = document.getElementById("inspiration-overlay");
         const overview = document.getElementById("island-overview");
         let pendingGraph = null;
@@ -152,14 +98,10 @@
         const replayButton = document.getElementById("replay");
 
         const popup = document.getElementById("node-popup");
-        const rowDialog = document.getElementById("row-dialog");
         let popupNodeId = null;
-        let popupTimer = null;
         let rowRequest = null;
-        let rowId = null;
 
         function hidePopup() {
-            clearTimeout(popupTimer);
             popup.hidden = true;
             overlay.replaceChildren();
             popupNodeId = null;
@@ -167,17 +109,9 @@
             if (network) updateSelection();
         }
 
-        function schedulePopupHide() {
-            clearTimeout(popupTimer);
-            popupTimer = setTimeout(() => {
-                if (!popup.matches(":hover") && !popup.contains(document.activeElement)) hidePopup();
-            }, 350);
-        }
-
         function showPopup(id, point) {
             const node = fullGraph.nodes.find(node => node.id === id);
             if (!node) return;
-            clearTimeout(popupTimer);
             popupNodeId = id;
             document.getElementById("popup-name").textContent = `#${id} · ${node.name}`;
             document.getElementById("popup-score").textContent = `Score: ${node.score.toLocaleString("en-US", { maximumSignificantDigits: 21 })}`;
@@ -195,23 +129,76 @@
             popup.style.top = `${Math.max(8, Math.min(y + 14, innerHeight - popup.offsetHeight - 8))}px`;
         }
 
-        popup.addEventListener("mouseenter", () => clearTimeout(popupTimer));
-        popup.addEventListener("mouseleave", schedulePopupHide);
-        popup.addEventListener("focusin", () => clearTimeout(popupTimer));
-        popup.addEventListener("focusout", schedulePopupHide);
         window.addEventListener("resize", hidePopup);
         document.addEventListener("keydown", event => {
-            if (event.key === "Escape") hidePopup();
+            if (event.key === "Escape") {
+                const returnFocus = inspector.contains(document.activeElement) && window.matchMedia("(max-width: 1279px)").matches;
+                hidePopup();
+                selectAttempt(null);
+                setInspectorOpen(false);
+                if (returnFocus) document.getElementById("inspect-toggle").focus();
+            }
         });
 
+        function inspirationLabel(references) {
+            return references === null || references === undefined ? "Inspiration history unavailable"
+                : references.length ? references.map(id => `#${id}`).join(", ") : "No inspiration references";
+        }
+
+        function setInspectorOpen(open) {
+            inspector.dataset.open = String(open);
+            document.getElementById("inspect-toggle").setAttribute("aria-expanded", String(open));
+        }
+
+        function updateInspector() {
+            const node = visibleGraph.nodes.find(node => node.id === selectedNodeId);
+            document.getElementById("inspector-empty").hidden = Boolean(node);
+            document.getElementById("inspector-content").hidden = !node;
+            attemptSelect.value = node ? String(node.id) : "";
+            if (!node) return;
+            const parent = fullGraph.edges.find(edge => edge.to === node.id);
+            const roots = new Set(fullGraph.edges.map(edge => edge.to));
+            const baseline = fullGraph.nodes.find(item => !roots.has(item.id));
+            document.getElementById("row-heading").textContent = `Attempt #${node.id}`;
+            document.getElementById("attempt-name").textContent = node.name;
+            document.getElementById("attempt-score").textContent = node.score.toLocaleString("en-US", { maximumSignificantDigits: 21 });
+            document.getElementById("attempt-ratio").textContent = baseline?.score > 0 ? `${(node.score / baseline.score).toFixed(2)}× baseline` : "Baseline unavailable";
+            document.getElementById("attempt-island").textContent = islandLabel(node) || "Not recorded";
+            document.getElementById("attempt-parent").textContent = parent ? `#${parent.from}` : "Baseline";
+            const task = rowData?.task ?? parent?.label;
+            document.getElementById("attempt-task").textContent = task ? task.toLowerCase() : parent ? "Not recorded" : "Baseline";
+            document.getElementById("attempt-model").textContent = rowData ? rowData.model ?? "Not recorded" : "—";
+            document.getElementById("attempt-uuid").textContent = rowData?.uuid ?? "—";
+            document.getElementById("attempt-inspirations").textContent = inspirationLabel(node.inspiration_ids);
+        }
+
+        function selectAttempt(id) {
+            selectedNodeId = visibleGraph.nodes.some(node => node.id === id) ? id : null;
+            rowRequest?.abort();
+            rowRequest = null;
+            rowData = null;
+            document.getElementById("raw-data").open = false;
+            updateInspector();
+            if (network) updateSelection();
+            if (selectedNodeId !== null) {
+                setInspectorOpen(true);
+                loadRow(selectedNodeId);
+            } else {
+                setInspectorOpen(false);
+            }
+        }
+
         async function loadRow(id) {
+            if (id === null) return;
             rowRequest?.abort();
             const request = new AbortController();
             rowRequest = request;
             const timeout = setTimeout(() => request.abort(), 10000);
             const values = document.getElementById("row-values");
+            const status = document.getElementById("row-status");
             const retry = document.getElementById("retry-row");
             values.textContent = "Loading…";
+            status.textContent = "Loading attempt details…";
             retry.hidden = true;
             try {
                 const response = await fetch(`/api/row/${encodeURIComponent(id)}`, {
@@ -219,12 +206,16 @@
                 });
                 if (!response.ok) throw new Error("Row request failed");
                 const row = await response.json();
-                if (rowRequest === request && rowDialog.open) {
+                if (rowRequest === request && selectedNodeId === id) {
+                    rowData = row;
                     values.textContent = JSON.stringify(row, null, 2);
+                    status.textContent = "";
+                    updateInspector();
                 }
             } catch {
-                if (rowRequest === request && rowDialog.open) {
-                    values.textContent = "Could not load this row. Please try again.";
+                if (rowRequest === request && selectedNodeId === id) {
+                    values.textContent = "Details unavailable.";
+                    status.textContent = "Could not load full details. Graph data is still available.";
                     retry.hidden = false;
                 }
             } finally {
@@ -232,22 +223,26 @@
             }
         }
 
-        document.getElementById("show-row").onclick = () => {
-            if (popupNodeId === null) return;
-            rowId = popupNodeId;
-            hidePopup();
-            document.getElementById("row-heading").textContent = `Row #${rowId} · All values`;
-            rowDialog.showModal();
-            loadRow(rowId);
+        document.getElementById("retry-row").onclick = () => loadRow(selectedNodeId);
+        document.getElementById("clear-selection").onclick = () => selectAttempt(null);
+        document.getElementById("inspect-toggle").onclick = () => {
+            setInspectorOpen(inspector.dataset.open !== "true");
+            if (inspector.dataset.open === "true") attemptSelect.focus();
         };
-        document.getElementById("retry-row").onclick = () => loadRow(rowId);
-        document.getElementById("close-row").onclick = () => rowDialog.close();
-        rowDialog.addEventListener("close", () => {
-            rowRequest?.abort();
-            rowRequest = null;
-        });
+        document.getElementById("close-inspector").onclick = () => {
+            setInspectorOpen(false);
+            document.getElementById("inspect-toggle").focus();
+        };
+        attemptSelect.onchange = () => {
+            hidePopup();
+            selectAttempt(attemptSelect.value === "" ? null : Number(attemptSelect.value));
+            if (selectedNodeId !== null) network.focus(selectedNodeId, { scale: 1, animation: animate() });
+            updateNodeLabels();
+        };
 
         function updateSelection() {
+            if (updatingGraph) return;
+            updateNodeLabels();
             const activeNodeId = hoveredNodeId ?? selectedNodeId;
             if (activeNodeId === null) {
                 network.unselectAll();
@@ -289,58 +284,100 @@
                 : ids.length ? `Island ${ids[0]}` : "";
         }
 
+        function chooseIsland(island) {
+            stopReplay();
+            selectedIsland = island;
+            showAttempt();
+            if (network) network.fit({ animation: animate() });
+            updateNodeLabels();
+        }
+
+        document.getElementById("island-select").onchange = event => {
+            chooseIsland(event.target.value === "all" ? null : Number(event.target.value));
+        };
+
         function updateOverview() {
             const islands = [...(fullGraph.islands ?? [])].sort((a, b) => a - b);
             overview.hidden = islands.length === 0;
+            document.getElementById("legacy-note").hidden = islands.length !== 0 || !fullGraph.nodes.length;
+            document.getElementById("island-count").textContent = String(islands.length);
             const existing = new Map([...overview.children].map(button => [button.dataset.island, button]));
             const parentIds = new Set(fullGraph.edges.map(edge => edge.to));
+            const selector = document.getElementById("island-select");
+            selector.replaceChildren();
             for (const island of [null, ...islands]) {
                 const key = island === null ? "all" : String(island);
+                const label = island === null ? "All populations" : `Island ${island}`;
+                const option = document.createElement("option");
+                option.value = key;
+                option.textContent = label;
+                selector.append(option);
                 let button = existing.get(key);
                 if (!button) {
                     button = document.createElement("button");
                     button.type = "button";
                     button.className = "island-card";
                     button.dataset.island = key;
-                    button.append(document.createElement("strong"), document.createElement("small"));
-                    button.onclick = () => {
-                        stopReplay();
-                        selectedIsland = island;
-                        hidePopup();
-                        showAttempt();
-                        if (network) network.fit({ animation: true });
-                    };
+                    button.append(document.createElement("strong"), document.createElement("small"), document.createElement("small"));
+                    button.onclick = () => chooseIsland(island);
                     overview.append(button);
                 }
                 existing.delete(key);
-                button.style.setProperty("--island-color", island === null ? "#94a3b8" : islandColor(island));
+                button.style.setProperty("--island-color", island === null ? theme.muted : islandColor(island));
                 button.setAttribute("aria-pressed", String(selectedIsland === island));
-                button.firstChild.textContent = island === null ? "All islands" : `Island ${island}`;
+                button.firstChild.textContent = label;
                 const members = timelineNodes.filter(node => island === null || node.island_ids?.includes(island));
                 const attempts = members.filter(node => parentIds.has(node.id)).length;
                 const champion = members.reduce((best, node) => !best || node.score > best.score ? node : best, null);
                 const baseline = members.find(node => !parentIds.has(node.id));
-                const improvement = champion && baseline ? ` · ${(champion.score / baseline.score).toFixed(2)}× baseline` : "";
-                button.lastChild.textContent = `${attempts ? `${attempts} successful attempts` : "No successful attempts yet"}${champion ? ` · best ${champion.score_label}${improvement}` : ""}`;
+                const count = document.createElement("span");
+                count.textContent = `${attempts} attempts`;
+                const ratio = document.createElement("span");
+                ratio.textContent = champion && baseline?.score > 0 ? `${(champion.score / baseline.score).toFixed(2)}×` : "—";
+                button.children[1].replaceChildren(count, ratio);
+                button.lastChild.className = "island-result";
+                button.lastChild.textContent = champion ? `Best ${champion.score_label}` : "No attempts yet";
+                button.setAttribute("aria-label", `${label}, ${attempts} successful attempts, ${button.lastChild.textContent}, ${ratio.textContent} baseline`);
             }
+            selector.value = selectedIsland === null ? "all" : String(selectedIsland);
             for (const button of existing.values()) button.remove();
         }
 
+        function svgElement(tag, attributes, text) {
+            const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
+            for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, String(value));
+            if (text !== undefined) element.textContent = text;
+            return element;
+        }
+
+        function drawBands() {
+            if (updatingGraph) return;
+            const bands = document.getElementById("band-overlay");
+            bands.replaceChildren();
+            if (!network || !fullGraph.islands?.length) return;
+            const positions = network.getPositions();
+            for (const island of fullGraph.islands) {
+                if (selectedIsland !== null && selectedIsland !== island) continue;
+                const members = visibleGraph.nodes.filter(node => node.level > 0 && node.island_ids?.length === 1 && node.island_ids[0] === island && positions[node.id]);
+                if (!members.length) continue;
+                const top = Math.min(...members.map(node => network.canvasToDOM(positions[node.id]).y));
+                if (top < 0 || top > bands.clientHeight - 32) continue;
+                const y = Math.max(16, top - 36);
+                bands.append(svgElement("line", { x1: 112, y1: y + 8, x2: bands.clientWidth - 24, y2: y + 8, stroke: theme.border, "stroke-width": 1, opacity: 0.5 }));
+                bands.append(svgElement("text", { x: 24, y: y + 8, fill: islandColor(island), "font-size": 11, "letter-spacing": 1 }, `ISLAND ${island}`));
+            }
+        }
+
         function drawInspirations() {
+            if (updatingGraph) return;
             overlay.replaceChildren();
             const activeNodeId = popupNodeId ?? selectedNodeId;
             if (!network || activeNodeId === null) return;
             const target = timelineNodes.find(node => node.id === activeNodeId);
             if (!target || !target.inspiration_ids?.length || !nodes.get(target.id)) return;
-            const svgElement = (tag, attributes, text) => {
-                const element = document.createElementNS("http://www.w3.org/2000/svg", tag);
-                for (const [name, value] of Object.entries(attributes)) element.setAttribute(name, String(value));
-                if (text !== undefined) element.textContent = text;
-                return element;
-            };
             const defs = svgElement("defs", {});
             const marker = svgElement("marker", { id: "inspiration-arrow", viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse" });
-            marker.append(svgElement("path", { d: "M 0 0 L 10 5 L 0 10 z", fill: "#e2e8f0" }));
+            marker.append(svgElement("path", { d: "M 0 0 L 10 5 L 0 10 z", fill: theme.accent }));
             defs.append(marker);
             overlay.append(defs);
             const targetPoint = network.canvasToDOM(network.getPositions([target.id])[target.id]);
@@ -360,7 +397,7 @@
                     source = network.canvasToDOM(network.getPositions([reference.id])[reference.id]);
                     overlay.append(svgElement("circle", {
                         cx: source.x, cy: source.y, r: (nodes.get(reference.id).size + 3) * network.getScale() + 5,
-                        fill: "none", stroke: "#fbbf24", "stroke-width": 2, "data-source-id": reference.id
+                        fill: "none", stroke: theme.accent, "stroke-width": 2, "data-source-id": reference.id
                     }));
                 } else {
                     const y = top + outsiders.indexOf(reference) * spacing;
@@ -373,31 +410,58 @@
                 overlay.append(svgElement("line", {
                     x1: source.x, y1: source.y,
                     x2: targetPoint.x - dx / distance * 18, y2: targetPoint.y - dy / distance * 18,
-                    stroke: "#e2e8f0", "stroke-width": 2, "stroke-dasharray": "6 5", "marker-end": "url(#inspiration-arrow)"
+                    stroke: theme.accent, "stroke-width": 1.5, "stroke-dasharray": "5 5", "marker-end": "url(#inspiration-arrow)"
                 }));
             }
             for (const { reference, y } of cards) {
                 const group = svgElement("g", { "data-reference-id": reference.id });
-                const color = reference.island_ids?.length === 1 ? islandColor(reference.island_ids[0]) : "#94a3b8";
-                group.append(svgElement("rect", { x: ghostX, y, width: cardWidth, height: 46, rx: 6, fill: "#182233", stroke: color, "stroke-width": 2 }));
-                group.append(svgElement("circle", { cx: ghostX + 13, cy: y + 15, r: 6, fill: "none", stroke: "#fbbf24", "stroke-width": 2, "data-source-id": reference.id }));
-                group.append(svgElement("text", { x: ghostX + 26, y: y + 18, fill: "#e2e8f0", "font-size": 13 }, `#${reference.id} · ${islandLabel(reference)}`));
-                group.append(svgElement("text", { x: ghostX + 10, y: y + 36, fill: "#aab8cd", "font-size": 12 }, `Score: ${reference.score_label} · inspiration`));
+                const color = reference.island_ids?.length === 1 ? islandColor(reference.island_ids[0]) : theme.muted;
+                group.append(svgElement("rect", { x: ghostX, y, width: cardWidth, height: 46, rx: 3, fill: theme.panel, stroke: color, "stroke-width": 2 }));
+                group.append(svgElement("circle", { cx: ghostX + 13, cy: y + 15, r: 6, fill: "none", stroke: theme.accent, "stroke-width": 2, "data-source-id": reference.id }));
+                group.append(svgElement("text", { x: ghostX + 26, y: y + 18, fill: theme.text, "font-size": 13 }, `#${reference.id} · ${islandLabel(reference)}`));
+                group.append(svgElement("text", { x: ghostX + 10, y: y + 36, fill: theme.muted, "font-size": 12 }, `Score: ${reference.score_label} · inspiration`));
                 overlay.append(group);
             }
         }
 
         function showAttempt() {
-            hidePopup();
-            timelineNodes = fullGraph.nodes.slice(0, Number(step.value) + 1);
-            const visibleNodes = timelineNodes.filter(node => selectedIsland === null || node.island_ids?.includes(selectedIsland));
-            const visibleIds = new Set(visibleNodes.map(node => node.id));
-            document.getElementById("step-label").textContent = `${step.value} / ${step.max}`;
-            updateOverview();
-            renderGraph({
-                nodes: visibleNodes,
-                edges: fullGraph.edges.filter(edge => visibleIds.has(edge.from) && visibleIds.has(edge.to))
-            });
+            // DataSet and layout changes can synchronously redraw a half-updated graph.
+            updatingGraph = true;
+            try {
+                hidePopup();
+                timelineNodes = fullGraph.nodes.slice(0, Number(step.value) + 1);
+                const visibleNodes = timelineNodes.filter(node => selectedIsland === null || node.island_ids?.includes(selectedIsland));
+                const visibleIds = new Set(visibleNodes.map(node => node.id));
+                document.getElementById("step-label").textContent = `${step.value} / ${step.max}`;
+                updateOverview();
+                visibleGraph = {
+                    nodes: visibleNodes,
+                    edges: fullGraph.edges.filter(edge => visibleIds.has(edge.from) && visibleIds.has(edge.to))
+                };
+                attemptSelect.replaceChildren();
+                const placeholder = document.createElement("option");
+                placeholder.value = "";
+                placeholder.textContent = "Choose from the graph";
+                attemptSelect.append(placeholder);
+                for (const node of visibleNodes) {
+                    const option = document.createElement("option");
+                    option.value = String(node.id);
+                    option.textContent = `#${node.id} · ${node.name}`;
+                    attemptSelect.append(option);
+                }
+                if (selectedNodeId !== null && !visibleIds.has(selectedNodeId)) selectAttempt(null);
+                document.getElementById("scope-label").textContent = selectedIsland === null ? "All populations" : `Island ${selectedIsland}`;
+                document.getElementById("scope-time").textContent = Number(step.value) === Number(step.max) ? "Latest snapshot" : `History · ${step.value} / ${step.max}`;
+                document.getElementById("latest").disabled = !fullGraph.nodes.length || (replayTimer === null && Number(step.value) === Number(step.max));
+                renderGraph(visibleGraph);
+            } finally {
+                updatingGraph = false;
+            }
+            if (network) {
+                updateSelection();
+                network.redraw();
+            }
+            updateInspector();
         }
 
         function receiveGraph(graph) {
@@ -429,6 +493,12 @@
             }
         }
 
+        document.getElementById("latest").onclick = () => {
+            stopReplay();
+            step.value = step.max;
+            showAttempt();
+        };
+
         step.addEventListener("input", () => {
             stopReplay();
             showAttempt();
@@ -443,13 +513,14 @@
             step.value = 0;
             showAttempt();
             replayButton.textContent = "Pause";
+            document.getElementById("latest").disabled = false;
             const started = performance.now();
             const finalStep = Number(step.max);
             replayTimer = setInterval(() => {
                 const elapsed = Math.min(10, (performance.now() - started) / 1000);
                 // Two-second speed ramps, with steady speed for the middle six seconds.
                 // The area under this speed curve is eight, normalizing progress to 0–1.
-                const progress = elapsed < 2
+                const progress = reducedMotion.matches ? elapsed / 10 : elapsed < 2
                     ? elapsed * elapsed / 32
                     : elapsed > 8
                         ? 1 - (10 - elapsed) ** 2 / 32
@@ -459,7 +530,7 @@
                     step.value = nextStep;
                     showAttempt();
                 }
-                if (progress === 1) stopReplay();
+                if (progress === 1) { stopReplay(); showAttempt(); }
             }, 50);
         };
 
@@ -485,7 +556,9 @@
                 ? "Last updated: never"
                 : `Last updated ${formatTime(Date.now() - lastUpdated)} ago`;
             document.getElementById("live-status").textContent =
-                isLive ? "LIVE - updates every 10s" : `OFFLINE - ${elapsed}`;
+                isLive ? "Connected" : lastUpdated === null ? "Connecting…" : "Reconnecting…";
+            document.getElementById("last-refresh").textContent = elapsed;
+            document.getElementById("connection-dot").dataset.connected = String(isLive);
         }
 
         function islandPositions() {
@@ -524,13 +597,15 @@
             const baseline = roots.length === 1 ? roots[0] : null;
             const ratio = best && baseline && baseline.score !== 0
                 ? best.score / baseline.score : NaN;
-            const comparison = Number.isFinite(ratio)
-                ? ` (${ratio.toFixed(2)}× baseline)` : "";
             const attempts = graph.nodes.length - roots.length;
             const parentsExplored = new Set(graph.edges.map(edge => edge.from)).size;
-            document.getElementById("summary").textContent = graph.nodes.length
-                ? `${attempts} successful attempts · ${best ? `best #${best.id}: ${best.score_label} score${comparison}` : "No scored candidates"} · ${parentsExplored} parents explored`
-                : "Waiting for the first candidate";
+            document.getElementById("best-score").textContent = best?.score_label ?? "—";
+            document.getElementById("best-ratio").textContent = Number.isFinite(ratio) ? `${ratio.toFixed(2)}×` : "—";
+            document.getElementById("best-id").textContent = best ? `Attempt #${best.id}` : "No attempts yet";
+            document.getElementById("attempt-count").textContent = String(attempts);
+            document.getElementById("summary").textContent = graph.nodes.length ? `${parentsExplored} parents explored · ${graph.nodes.length} nodes` : "Waiting for the first candidate";
+            document.getElementById("graph-empty").hidden = graph.nodes.length > 0;
+            document.getElementById("empty-message").textContent = "The lineage will appear when a baseline is recorded.";
             const bestPath = new Set();
             let ancestor = best?.id;
             while (ancestor !== undefined && !bestPath.has(ancestor)) {
@@ -539,6 +614,7 @@
             }
 
             const orderedIslands = Boolean(fullGraph.islands?.length);
+            document.getElementById("graph-container").dataset.islands = String(orderedIslands);
             const positions = orderedIslands ? islandPositions() : new Map();
             const nextNodes = graph.nodes.map(node => {
                 const isBest = node.id === best?.id;
@@ -548,14 +624,14 @@
                     level: node.level,
                     ...positions.get(node.id),
                     fixed: orderedIslands,
-                    label: `#${node.id} · ${node.score_label}`,
+                    label: node.level === 0 ? `Baseline · ${node.score_label}` : `#${node.id} · ${node.score_label}`,
                     shape: isBest ? "diamond" : "dot",
-                    size: isBest ? 19 : onPath ? 15 : 11,
+                    size: isBest ? 12 : onPath ? 8 : 6,
                     color: {
-                        background: node.island_ids?.length === 1 ? islandColor(node.island_ids[0]) : "#94a3b8",
-                        border: isBest ? "#fbbf24" : onPath ? "#34d399" : "#51627a"
+                        background: isBest || onPath ? theme.positive : theme.panel,
+                        border: isBest || onPath ? theme.positive : node.island_ids?.length === 1 ? islandColor(node.island_ids[0]) : theme.muted
                     },
-                    borderWidth: isBest ? 4 : 2
+                    borderWidth: 1.5
                 };
             });
             const nextEdges = graph.edges.map(edge => ({
@@ -563,16 +639,19 @@
                 from: edge.from,
                 to: edge.to,
                 color: {
-                    color: bestPath.has(edge.to) ? "#34d399" : "#42536b",
+                    color: bestPath.has(edge.to) ? theme.positive : theme.line,
+                    highlight: bestPath.has(edge.to) ? theme.positive : theme.accent,
+                    hover: theme.text,
                     inherit: false
                 },
-                width: bestPath.has(edge.to) ? 4 : 1.5
+                width: bestPath.has(edge.to) ? 2 : 1
             }));
 
             document.getElementById("fit").disabled = graph.nodes.length === 0;
             document.getElementById("best").disabled = best === null;
 
             if (network) {
+                const wasEmpty = nodes.getIds().length === 0;
                 const position = network.getViewPosition();
                 const scale = network.getScale();
                 const rootBefore = baseline && nodes.get(baseline.id)
@@ -581,7 +660,13 @@
                 const edgeIds = new Set(nextEdges.map(edge => edge.id));
                 edges.remove(edges.getIds().filter(id => !edgeIds.has(id)));
                 nodes.remove(nodes.getIds().filter(id => !nodeIds.has(id)));
-                network.setOptions({ layout: { hierarchical: { enabled: !orderedIslands } } });
+                if (orderedLayout !== orderedIslands) {
+                    // Hierarchical mode rewrites node levels; rebuild them when changing modes.
+                    edges.remove(edges.getIds());
+                    nodes.remove(nodes.getIds());
+                    network.setOptions({ layout: { hierarchical: { enabled: !orderedIslands } } });
+                    orderedLayout = orderedIslands;
+                }
                 nodes.update(nextNodes);
                 edges.update(nextEdges);
                 if (!nodeIds.has(selectedNodeId)) selectedNodeId = null;
@@ -594,6 +679,8 @@
                     position.y += rootAfter.y - rootBefore.y;
                 }
                 network.moveTo({ position, scale, animation: false });
+                if (wasEmpty && graph.nodes.length) network.fit({ animation: false });
+                updateNodeLabels();
                 return;
             }
 
@@ -619,29 +706,33 @@
 
                 nodes: {
                     shape: "dot",
-                    size: 11,
-                    color: "#94a3b8",
-                    borderWidth: 2,
+                    size: 6,
+                    color: theme.muted,
+                    borderWidth: 1.5,
                     borderWidthSelected: 2,
                     chosen: {
                         node(values, id, selected, hovering) {
                             if (selected || hovering) {
-                                values.borderColor = "#e2e8f0";
-                                if (hoveredNodeId !== null) values.size += 2;
+                                values.borderColor = id === selectedNodeId ? theme.accent : theme.text;
+                                values.borderWidth = id === selectedNodeId ? 3 : 1.5;
                             }
                         },
                         label: false
                     },
                     font: {
-                        color: "#e2e8f0",
-                        size: 16
+                        color: theme.text,
+                        size: 12,
+                        face: "IBM Plex Mono",
+                        background: theme.canvas,
+                        strokeWidth: 0
                     }
                 },
 
                 edges: {
-                    arrows: "to",
-                    color: { color: "#42536b", inherit: false },
+                    arrows: { to: { enabled: true, scaleFactor: 0.45 } },
+                    color: { color: theme.line, inherit: false },
                     width: 1.5,
+                    chosen: { edge(values) { values.width = 2; } },
                     smooth: {
                         enabled: true,
                         type: "cubicBezier",
@@ -660,39 +751,54 @@
                 options
             );
 
-            network.on("afterDrawing", drawInspirations);
+            orderedLayout = orderedIslands;
+            network.on("afterDrawing", () => { drawBands(); drawInspirations(); });
+            network.on("animationFinished", updateNodeLabels);
             network.on("hoverNode", ({ node, pointer }) => {
                 hoveredNodeId = node;
                 updateSelection();
                 showPopup(node, pointer.DOM);
             });
-            network.on("blurNode", schedulePopupHide);
+            network.on("blurNode", hidePopup);
             network.on("dragStart", hidePopup);
             network.on("zoom", hidePopup);
             network.on("click", ({ pointer }) => {
                 const clickedNodeId = network.getNodeAt(pointer.DOM);
                 hidePopup();
-                if (clickedNodeId === undefined || clickedNodeId === selectedNodeId) {
-                    selectedNodeId = null;
-                } else {
-                    selectedNodeId = clickedNodeId;
-                }
-                updateSelection();
+                selectAttempt(clickedNodeId === undefined || clickedNodeId === selectedNodeId ? null : clickedNodeId);
             });
 
             const fitButton = document.getElementById("fit");
             const bestButton = document.getElementById("best");
-            fitButton.onclick = () => network.fit({ animation: true });
+            fitButton.onclick = () => {
+                network.fit({ animation: animate() });
+                updateNodeLabels();
+            };
             bestButton.onclick = () => {
                 if (!best) return;
                 hoveredNodeId = null;
-                selectedNodeId = best.id;
-                updateSelection();
+                selectAttempt(best.id);
                 network.focus(best.id, {
                     scale: 1,
-                    animation: { duration: 350 }
+                    animation: animate() ? { duration: 250 } : false
                 });
+                updateNodeLabels();
             };
+            updateNodeLabels();
+        }
+
+        function updateNodeLabels() {
+            if (!network || updatingGraph) return;
+            const detail = network.getScale() >= 0.7;
+            const fontSize = 12 / network.getScale();
+            const updates = [];
+            for (const node of visibleGraph.nodes) {
+                const show = detail || node.id === selectedNodeId || node.id === hoveredNodeId;
+                const label = show ? node.level === 0 ? `Baseline · ${node.score_label}` : `#${node.id} · ${node.score_label}` : "";
+                const rendered = nodes.get(node.id);
+                if (rendered && (rendered.label !== label || rendered.font?.size !== fontSize)) updates.push({ id: node.id, label, font: { size: fontSize } });
+            }
+            if (updates.length) nodes.update(updates);
         }
 
         async function refreshGraph() {
@@ -719,6 +825,7 @@
                 // Keep the last successful graph and retry without interrupting navigation.
                 if (!network) {
                     document.getElementById("summary").textContent = "Waiting for server…";
+                    document.getElementById("empty-message").textContent = "The dashboard cannot reach the server. Retrying automatically.";
                 }
             } finally {
                 updateLiveStatus();
@@ -727,8 +834,17 @@
             }
         }
 
-        setInterval(updateLiveStatus, 1000);
-        refreshGraph();
+        document.fonts.ready.then(() => {
+            if (network) network.redraw();
+        });
+        if (typeof vis === "undefined") {
+            document.getElementById("summary").textContent = "Graph library unavailable";
+            document.getElementById("empty-message").textContent = "The graph library could not load. Check your connection and reload this page.";
+            document.getElementById("live-status").textContent = "Unavailable";
+        } else {
+            setInterval(updateLiveStatus, 1000);
+            refreshGraph();
+        }
     </script>
 </body>
 </html>
