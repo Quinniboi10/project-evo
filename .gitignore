@@ -4,6 +4,7 @@ __pycache__/
 
 # Experiments and stuff
 playground/
+research/
 
 # Main log file
 *.log
