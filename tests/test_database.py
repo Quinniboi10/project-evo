@@ -103,6 +103,23 @@ class DatabaseTests(unittest.TestCase):
             pass
         self.assertEqual(self.path.read_bytes(), before)
 
+    def test_v1_database_upgrade_failures_preserve_original(self):
+        # Match the schema shipped in v1.0.0, including its original column order.
+        with closing(sqlite3.connect(self.path)) as connection:
+            connection.execute("CREATE TABLE evolve (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, uuid TEXT NOT NULL, model TEXT, task TEXT, parent_id INTEGER, score REAL NOT NULL)")
+            connection.execute("INSERT INTO evolve VALUES (1, 'Baseline', 'baseline', NULL, NULL, NULL, 10)")
+            connection.commit()
+        before = self.path.read_bytes()
+        with self.assertLogs(level="WARNING"), self.assertRaisesRegex(DatabaseException, "island_id"):
+            Database(self.path, island_count=1)
+        with patch.object(dashboard, "DB_FILE", self.path), dashboard.app.test_client() as client:
+            for url in ("/api/graph", "/api/row/1"):
+                with self.subTest(url=url):
+                    response = client.get(url)
+                    self.assertEqual(response.status_code, 500)
+                    self.assertIn("Database cannot support this operation", response.get_json()["error"])
+        self.assertEqual(self.path.read_bytes(), before)
+
     def test_extra_columns_and_reference_roundtrip(self):
         db = self.create()
         db.db.execute("ALTER TABLE evolve ADD COLUMN extra TEXT DEFAULT 'kept'")
