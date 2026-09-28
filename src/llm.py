@@ -1,7 +1,7 @@
-from error import KillPoolException
-from task import Task
-import config
-import git
+from .error import KillPoolException
+from .task import Task
+from . import config
+from . import git
 
 from threading import Lock
 from pathlib import Path
@@ -15,8 +15,8 @@ router_lock = Lock()
 running_processes: dict[str, int] = {}
 
 env = os.environ.copy()
-env["OPENCODE_CONFIG"] = str((Path(__file__).resolve().parent / "configs" / "opencode-sandbox.json").resolve(strict=True))
-env["OPENCODE_SANDBOX_CONFIG"] = (Path(__file__).resolve().parent / "configs" / "opencode-sandbox-policy.json").resolve(strict=True).read_text()
+env["OPENCODE_CONFIG"] = str((Path(__file__).resolve().parent.parent / "configs" / "opencode-sandbox.json").resolve(strict=True))
+env["OPENCODE_SANDBOX_CONFIG"] = (Path(__file__).resolve().parent.parent / "configs" / "opencode-sandbox-policy.json").resolve(strict=True).read_text()
 
 def _codex(workspace: Path, model_name: str, prompt: str, extra_args: list[str]):
     return subprocess.run(

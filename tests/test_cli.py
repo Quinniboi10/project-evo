@@ -1,14 +1,15 @@
-from database import Database, PrimaryTableRow
-from version import version_string
-import dashboard
-import main
-import evolve
+from src.database import Database, PrimaryTableRow
+from src.version import version_string
+from src import dashboard
+from src import main
+from src import evolve
 
 from pathlib import Path
 from unittest.mock import Mock, patch
 from contextlib import chdir, closing, redirect_stderr, redirect_stdout
 from io import StringIO
 
+import os
 import shutil
 import subprocess
 import sys
@@ -66,7 +67,7 @@ class CliTests(unittest.TestCase):
 
     def test_unified_smoke(self):
         with tempfile.TemporaryDirectory() as directory:
-            result = subprocess.run([sys.executable, str(ROOT / "main.py"), "run", "--smoke", "-i", "12", "--debug", "-c", str(ROOT / "config.toml")], cwd=directory, text=True, capture_output=True, timeout=60)
+            result = subprocess.run([sys.executable, "-m", "src.main", "run", "--smoke", "-i", "12", "--debug", "-c", str(ROOT / "config.toml")], cwd=directory, env={**os.environ, "PYTHONPATH": str(ROOT)}, text=True, capture_output=True, timeout=60)
             for line in result.stdout.splitlines():
                 if line.startswith("Smoke artifacts: "):
                     self.addCleanup(shutil.rmtree, Path(line.removeprefix("Smoke artifacts: ")))

@@ -1,7 +1,7 @@
-from database import PrimaryTableRow
-from task import Task
-import config
-import git
+from .database import PrimaryTableRow
+from .task import Task
+from . import config
+from . import git
 
 import logging
 import subprocess

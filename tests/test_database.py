@@ -1,9 +1,9 @@
-from database import Database, PrimaryTableRow, SCHEMA_VERSION
-from error import DatabaseException
-from task import Task
-from version import version_string
-import config
-import dashboard
+from src.database import Database, PrimaryTableRow, SCHEMA_VERSION
+from src.error import DatabaseException
+from src.task import Task
+from src.version import version_string
+from src import config
+from src import dashboard
 
 from pathlib import Path
 from contextlib import closing
@@ -54,7 +54,7 @@ class DatabaseTests(unittest.TestCase):
         connection.execute("CREATE TABLE metadata (id INTEGER)")
         connection.commit()
         # The duplicate metadata table fails after attempt DDL has executed.
-        with patch("database.sqlite3.connect", return_value=connection), self.assertRaises(DatabaseException):
+        with patch("src.database.sqlite3.connect", return_value=connection), self.assertRaises(DatabaseException):
             Database(":memory:", island_count=3)
         with self.assertRaises(sqlite3.ProgrammingError):
             connection.execute("SELECT 1")
@@ -69,7 +69,7 @@ class DatabaseTests(unittest.TestCase):
                 db.db.commit()
                 before = self.path.read_bytes()
                 log = Mock()
-                with patch("database.logging.log", log):
+                with patch("src.database.logging.log", log):
                     with closing(Database(self.path, island_count=3)):
                         pass
                     self.assertEqual(self.path.read_bytes(), before)
@@ -134,7 +134,7 @@ class DatabaseTests(unittest.TestCase):
         db.insert_attempt(child, 0, references)
         references.clear()
         self.assertEqual(child.reference_ids, [second.id, first.id])
-        with closing(Database(self.path, island_count=3)) as reopened, patch.object(config, "cfg", SimpleNamespace(softmax_temp=1)), patch("database.random.choices", return_value=[1]):
+        with closing(Database(self.path, island_count=3)) as reopened, patch.object(config, "cfg", SimpleNamespace(softmax_temp=1)), patch("src.database.random.choices", return_value=[1]):
             loaded = reopened.weighted_sample(0)
         self.assertEqual((loaded.island_id, loaded.reference_ids), (0, [second.id, first.id]))
         self.assertEqual(db.select("SELECT extra FROM evolve"), [("kept",)] * 4)

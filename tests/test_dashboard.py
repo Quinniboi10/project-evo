@@ -1,7 +1,7 @@
-from database import Database, PrimaryTableRow
-from error import DatabaseException
-from task import Task
-import dashboard
+from src.database import Database, PrimaryTableRow
+from src.error import DatabaseException
+from src.task import Task
+from src import dashboard
 
 from pathlib import Path
 from unittest.mock import patch

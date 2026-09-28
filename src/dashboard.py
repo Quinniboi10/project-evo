@@ -1,7 +1,7 @@
-from version import version_string
-from database import Database, check_schema_version, read_island_count, decode_references, database_errors
-from error import DatabaseException
-from utils import abbreviate_score
+from .version import version_string
+from .database import Database, check_schema_version, read_island_count, decode_references, database_errors
+from .error import DatabaseException
+from .utils import abbreviate_score
 
 from pathlib import Path
 from typing import cast

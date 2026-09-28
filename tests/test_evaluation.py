@@ -1,9 +1,9 @@
-from database import Database, PrimaryTableRow
-from error import EvalError
-import config
-import evolve
-import git
-import llm
+from src.database import Database, PrimaryTableRow
+from src.error import EvalError
+from src import config
+from src import evolve
+from src import git
+from src import llm
 
 from pathlib import Path
 from types import SimpleNamespace

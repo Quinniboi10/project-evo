@@ -1,11 +1,11 @@
-from error import assert_config, assert_eval, KillWorkerException
-from prompt import build_prompt, build_run_fix_prompt, build_inspiration_context
-from database import Database, PrimaryTableRow
-from task import Task
-from version import version_string
-import config
-import git
-import llm
+from .error import assert_config, assert_eval, KillWorkerException
+from .prompt import build_prompt, build_run_fix_prompt, build_inspiration_context
+from .database import Database, PrimaryTableRow
+from .task import Task
+from .version import version_string
+from . import config
+from . import git
+from . import llm
 
 from concurrent.futures import ThreadPoolExecutor, wait
 from uuid import uuid7
@@ -160,7 +160,7 @@ def run(args: argparse.Namespace) -> int:
 
 def execute(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if args.smoke:
-        import smoke
+        from . import smoke
         exit_code = smoke.run(args, run)
     else:
         if args.project_path is None or args.eval_file is None or (args.objective is None and args.objective_file is None):

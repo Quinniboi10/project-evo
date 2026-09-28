@@ -70,7 +70,7 @@ const context = vm.createContext({
     setInterval() {}, clearInterval() {}, AbortSignal, AbortController,
     fetch: () => new Promise(() => {}), console, performance
 });
-const html = fs.readFileSync(`${__dirname}/../dashboard/index.html`, "utf8");
+const html = fs.readFileSync(`${__dirname}/../src/dashboard/index.html`, "utf8");
 vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context);
 const run = code => vm.runInContext(code, context);
 const result = code => JSON.parse(JSON.stringify(run(code)));

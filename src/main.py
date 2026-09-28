@@ -1,7 +1,7 @@
-from version import version_string
-import evolve as evolution
-import dashboard
-import visualize
+from .version import version_string
+from . import evolve as evolution
+from . import dashboard
+from . import visualize
 
 import argparse
 

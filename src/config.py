@@ -1,4 +1,4 @@
-from error import assert_config
+from .error import assert_config
 
 from argparse import Namespace
 from pathlib import Path

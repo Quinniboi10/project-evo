@@ -1,6 +1,6 @@
-from error import assert_config
-import config
-import llm
+from .error import assert_config
+from . import config
+from . import llm
 
 from argparse import Namespace
 from pathlib import Path

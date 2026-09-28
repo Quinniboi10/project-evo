@@ -1,6 +1,6 @@
-from error import KillWorkerException, KillPoolException
-from database import PrimaryTableRow
-import config
+from .error import KillWorkerException, KillPoolException
+from .database import PrimaryTableRow
+from . import config
 
 from threading import Lock
 from pathlib import Path

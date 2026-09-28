@@ -1,7 +1,7 @@
-from version import version_string
-from utils import abbreviate_score
+from .version import version_string
+from .utils import abbreviate_score
 
-from database import Database
+from .database import Database
 
 from contextlib import closing
 

@@ -1,7 +1,7 @@
-from error import assert_db, DatabaseException
-from task import Task
-from version import version_string
-import config
+from .error import assert_db, DatabaseException
+from .task import Task
+from .version import version_string
+from . import config
 
 from typing import Optional, Self
 from pathlib import Path
