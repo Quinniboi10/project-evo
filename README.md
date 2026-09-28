@@ -51,7 +51,7 @@ Each attempt starts from one "parent" workspace. Exploration (30%) tries alterna
 - Worker allocation favors higher island best scores using the configured temperature. As island node counts diverge, allocation blends toward uniform; each baseline counts as one node.
 - Local references use the best-scoring alternative, then random remaining alternatives without duplicates.
 - `cross_island_inspiration_probability` defaults to `0.1`: occasionally one reference slot uses another island's best non-baseline attempt. Set `0` for fully local inspiration.
-- Island count is fixed when resuming a database; sharing probability may change. Pre-island databases cannot resume evolution; start a new database.
+- Island count is fixed when resuming a database; sharing probability may change. Database schema versions are independent of application versions. Older, newer, or unversioned schemas warn and attempt normal operations; compatibility is not guaranteed and no automatic migration occurs. Use a matching application version or start a new database if incompatible.
 - Scores and diffs are included directly in prompts, so agents need no Git access. Each attempt retains one parent.
 
 ### Dashboard

@@ -1,7 +1,7 @@
 from version import version_string
 from utils import abbreviate_score
 
-from database import Database, PrimaryTableRow
+from database import Database
 
 from contextlib import closing
 
@@ -19,7 +19,7 @@ def build_parser(add_help: bool=True) -> argparse.ArgumentParser:
     return parser
 
 def run(args: argparse.Namespace):
-    with closing(Database(args.db, PrimaryTableRow, require_exist=True)) as db:
+    with closing(Database(args.db, require_exist=True)) as db:
 
         graph = graphviz.Digraph("Exploration diagram", comment="Project Evo")
         graph.attr(rankdir='LR', concentrate='true')

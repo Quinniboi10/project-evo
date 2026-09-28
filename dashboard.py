@@ -1,4 +1,6 @@
 from version import version_string
+from database import Database, check_schema_version, read_island_count, decode_references, database_errors
+from error import DatabaseException
 from utils import abbreviate_score
 
 from pathlib import Path
@@ -6,7 +8,6 @@ from typing import cast
 from contextlib import contextmanager
 
 import sqlite3
-import json
 import argparse
 
 from flask import Flask, jsonify, current_app, abort
@@ -25,46 +26,47 @@ def build_parser(add_help: bool=True) -> argparse.ArgumentParser:
 
 @contextmanager
 def read_snapshot():
-    db = sqlite3.connect(DB_FILE.resolve().as_uri() + "?mode=ro", uri=True)
-    db.row_factory = sqlite3.Row
-    try:
-        db.execute("BEGIN")
-        yield db
-    finally:
-        db.close()
+    with database_errors():
+        db = sqlite3.connect(DB_FILE.resolve().as_uri() + "?mode=ro", uri=True)
+        db.row_factory = sqlite3.Row
+        try:
+            db.execute("BEGIN")
+            check_schema_version(db, DB_FILE)
+            yield db
+        finally:
+            db.close()
 
-def read_metadata(db: sqlite3.Connection) -> tuple[list[int], dict[int, list[int]], dict[int, list[int]]]:
-    tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-    islands: list[int] = []
-    memberships: dict[int, list[int]] = {}
-    inspirations: dict[int, list[int]] = {}
-    if {"island_settings", "island_membership"} <= tables:
-        settings = db.execute("SELECT island_count FROM island_settings WHERE id = 1").fetchone()
-        if settings is not None:
-            islands = list(range(settings[0]))
-        for island_id, attempt_id in db.execute("SELECT island_id, attempt_id FROM island_membership ORDER BY island_id"):
-            memberships.setdefault(attempt_id, []).append(island_id)
-    if "attempt_inspirations" in tables:
-        for attempt_id, reference_ids in db.execute("SELECT attempt_id, reference_ids FROM attempt_inspirations"):
-            inspirations[attempt_id] = json.loads(reference_ids)
-    return islands, memberships, inspirations
+def read_metadata(db: sqlite3.Connection) -> list[int]:
+    return list(range(read_island_count(db)))
+
+def attempt_metadata(row: sqlite3.Row, islands: list[int]) -> dict:
+    return {
+        "island_ids": islands if row["island_id"] is None else [row["island_id"]],
+        "inspiration_ids": decode_references(row["reference_ids"])
+    }
+
+@app.errorhandler(DatabaseException)
+def database_error(error: DatabaseException):
+    return jsonify({"error": str(error)}), 500
 
 @app.get("/api/row/<int:id>")
 def row_data(id: int):
     with read_snapshot() as db:
-        match = db.execute("SELECT * FROM evolve WHERE id = ?", (id,)).fetchone()
+        match = db.execute(f"SELECT {Database.COLUMNS} FROM evolve WHERE id = ?", (id,)).fetchone()
         if match is None:
             abort(404)
-        _, memberships, inspirations = read_metadata(db)
+        islands = read_metadata(db)
         row = dict(match)
-        row.update(island_ids=memberships.get(id, []), inspiration_ids=inspirations.get(id))
+        del row["island_id"], row["reference_ids"]
+        row.update(attempt_metadata(match, islands))
     return jsonify(row)
 
 @app.get("/api/graph")
 def graph_data():
     with read_snapshot() as db:
-        rows = db.execute("SELECT id, name, score, parent_id, task FROM evolve ORDER BY id").fetchall()
-        islands, memberships, inspirations = read_metadata(db)
+        rows = db.execute("SELECT id, name, score, parent_id, task, island_id, reference_ids FROM evolve ORDER BY id").fetchall()
+        islands = read_metadata(db)
+        metadata = {row["id"]: attempt_metadata(row, islands) for row in rows}
 
     nodes: list[dict] = []
     edges: list[dict] = []
@@ -87,7 +89,7 @@ def graph_data():
         nodes.append({
             "id": id, "name": row["name"], "score_label": abbreviate_score(row["score"]),
             "score": row["score"], "level": depths[id],
-            "island_ids": memberships.get(id, []), "inspiration_ids": inspirations.get(id)
+            **metadata[id]
         })
         if row["parent_id"] is not None:
             edges.append({"from": row["parent_id"], "to": id, "label": row["task"]})
@@ -101,6 +103,9 @@ def run(args: argparse.Namespace):
     global DB_FILE
     DB_FILE = Path(args.db).resolve(strict=True)
 
+    with read_snapshot() as db:
+        read_metadata(db)
+        db.execute(f"SELECT {Database.COLUMNS} FROM evolve LIMIT 0")
     app.run()
 
 if __name__ == '__main__':

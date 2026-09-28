@@ -5,10 +5,8 @@ import dashboard
 
 from pathlib import Path
 from unittest.mock import patch
-from contextlib import closing
 
 import json
-import sqlite3
 import tempfile
 import unittest
 
@@ -17,9 +15,8 @@ class DashboardTests(unittest.TestCase):
         temp = tempfile.TemporaryDirectory(prefix="evo-dashboard-")
         self.addCleanup(temp.cleanup)
         self.path = Path(temp.name) / "islands.db"
-        self.db = Database(self.path, PrimaryTableRow)
+        self.db = Database(self.path, island_count=4)
         self.addCleanup(self.db.close)
-        self.db.init_islands(4)
         self.baseline = PrimaryTableRow("Baseline", "base", None, None, None, 10)
         self.db.insert_baseline(self.baseline)
         context = patch.object(dashboard, "DB_FILE", self.path)
@@ -53,29 +50,19 @@ class DashboardTests(unittest.TestCase):
         self.assertEqual(self.client.get("/api/row/999").status_code, 404)
         self.assertEqual(self.client.get("/api/row/not-an-id").status_code, 404)
 
-    def test_additive_upgrade_and_read_only_legacy_view(self):
-        child = self.attempt(0, 20)
-        self.db.cursor.execute("DROP TABLE attempt_inspirations")
+    def test_read_only_and_incompatible_schema(self):
+        before = self.path.read_bytes()
+        self.assertEqual(self.client.get("/api/graph").status_code, 200)
+        self.assertEqual(self.path.read_bytes(), before)
+        with self.assertRaises(DatabaseException), dashboard.read_snapshot() as db:
+            db.execute("DELETE FROM evolve")
+        self.db.cursor.execute("ALTER TABLE evolve RENAME COLUMN reference_ids TO old_references")
         self.db.db.commit()
         before = self.path.read_bytes()
-        graph = self.client.get("/api/graph").get_json()
-        self.assertIsNone(graph["nodes"][1]["inspiration_ids"])
+        response = self.client.get("/api/graph")
+        self.assertEqual(response.status_code, 500)
+        self.assertIn("reference_ids", response.get_json()["error"])
         self.assertEqual(self.path.read_bytes(), before)
-        with closing(Database(self.path, PrimaryTableRow)) as resumed:
-            resumed.init_islands(4)
-            self.assertEqual(resumed.select("SELECT * FROM attempt_inspirations"), [])
-        self.assertIsNone(self.client.get(f"/api/row/{child.id}").get_json()["inspiration_ids"])
-        self.db.cursor.execute("DROP TABLE island_membership")
-        self.db.cursor.execute("DROP TABLE island_settings")
-        self.db.db.commit()
-        before = self.path.read_bytes()
-        graph = self.client.get("/api/graph").get_json()
-        self.assertEqual(graph["islands"], [])
-        self.assertEqual(graph["nodes"][1]["island_ids"], [])
-        self.assertEqual(self.path.read_bytes(), before)
-        with dashboard.read_snapshot() as db:
-            with self.assertRaises(sqlite3.OperationalError):
-                db.execute("DELETE FROM evolve")
 
     def test_provenance_atomicity_and_validation(self):
         reference = self.attempt(0, 20)
@@ -84,14 +71,13 @@ class DashboardTests(unittest.TestCase):
             with self.assertRaises(DatabaseException):
                 self.attempt(1, 30, references)
         self.assertEqual(self.db.select("SELECT COUNT(*) FROM evolve"), [(2,)])
-        self.db.cursor.execute("CREATE TRIGGER reject_provenance BEFORE INSERT ON attempt_inspirations BEGIN SELECT RAISE(ABORT, 'rollback'); END")
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.db.cursor.execute("CREATE TRIGGER reject_provenance BEFORE INSERT ON evolve BEGIN SELECT RAISE(ABORT, 'rollback'); END")
+        with self.assertRaises(DatabaseException):
             self.attempt(1, 30, [reference.id])
         self.assertEqual(self.db.select("SELECT COUNT(*) FROM evolve"), [(2,)])
-        self.assertEqual(self.db.select("SELECT COUNT(*) FROM island_membership"), [(5,)])
         self.db.cursor.execute("DROP TRIGGER reject_provenance")
         child = self.attempt(1, 30, [reference.id])
-        stored = self.db.cursor.execute("SELECT reference_ids FROM attempt_inspirations WHERE attempt_id = ?", (child.id,)).fetchone()
+        stored = self.db.cursor.execute("SELECT reference_ids FROM evolve WHERE id = ?", (child.id,)).fetchone()
         self.assertEqual(json.loads(stored[0]), [reference.id])
 
     def test_deep_tree_and_snapshot_local_depths(self):

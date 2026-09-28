@@ -1,1 +1,1 @@
-version_string = "Project Evo 1.6.0"
+version_string = "Project Evo 1.7.0"

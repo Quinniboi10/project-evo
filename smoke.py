@@ -117,17 +117,15 @@ def evaluate(workspace):
         with closing(sqlite3.connect(cfg.db_file)) as db:
             rows = db.execute("SELECT uuid, name, score, parent_id FROM evolve").fetchall()
             uuids = dict(db.execute("SELECT id, uuid FROM evolve").fetchall())
-            members = db.execute("SELECT island_id, attempt_id FROM island_membership").fetchall()
-            inspirations = dict(db.execute("SELECT attempt_id, reference_ids FROM attempt_inspirations"))
+            owners = dict(db.execute("SELECT id, island_id FROM evolve"))
             baseline_id = db.execute("SELECT id FROM evolve WHERE parent_id IS NULL").fetchone()[0]
-            assert_config({island for island, attempt in members if attempt == baseline_id} == set(range(cfg.island_count)), "Smoke baseline must seed every island")
-            for attempt_id, parent_id in db.execute("SELECT id, parent_id FROM evolve WHERE parent_id IS NOT NULL"):
-                islands = [island for island, attempt in members if attempt == attempt_id]
-                assert_config(len(islands) == 1, "Smoke child must belong to exactly one island")
+            assert_config(owners[baseline_id] is None, "Smoke baseline must seed every island")
+            for attempt_id, parent_id, island, reference_ids in db.execute("SELECT id, parent_id, island_id, reference_ids FROM evolve WHERE parent_id IS NOT NULL"):
+                assert_config(type(island) is int and 0 <= island < cfg.island_count, "Smoke child must belong to exactly one island")
                 assert_config(parent_id in uuids, "Smoke database references a missing parent")
-                assert_config((islands[0], parent_id) in members, "Smoke parent belongs to a different island")
-                assert_config(attempt_id in inspirations, "Smoke child lacks inspiration provenance")
-                references = json.loads(inspirations[attempt_id])
+                assert_config(parent_id == baseline_id or owners[parent_id] == island, "Smoke parent belongs to a different island")
+                assert_config(reference_ids is not None, "Smoke child lacks inspiration provenance")
+                references = json.loads(reference_ids)
                 assert_config(len(references) <= cfg.inspiration_count and len(references) == len(set(references)), "Smoke inspiration limit or uniqueness failed")
                 assert_config(all(reference in uuids and reference < attempt_id and reference != parent_id for reference in references), "Smoke inspiration references an invalid attempt")
         expected = {path.name: attempt for path, attempt in self.attempts.items() if attempt["scenario"] == 0 or (attempt["scenario"] == 1 and cfg.max_fix_attempts > 0)}

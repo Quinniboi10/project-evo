@@ -56,8 +56,7 @@ def check_requirements():
         assert_config(which(adapter) is not None, f"The current configuration expects the command '{adapter}' but it cannot be found")
 
 def init_db():
-    with closing(Database(config.cfg.db_file, PrimaryTableRow)) as db:
-        db.init_islands(config.cfg.island_count)
+    with closing(Database(config.cfg.db_file, island_count=config.cfg.island_count)) as db:
         # If the database is empty, bootstrap
         if len(db.select(f"SELECT id FROM {db.PRIMARY_TABLE} LIMIT 1;")) == 0:
             passed, score = config.cfg.eval_fn(config.cfg.project_root)
@@ -73,7 +72,7 @@ def init_db():
 
 def run_worker(island_id: int):
     # Database connections must be held at the per-thread level (not shared)
-    with closing(Database(config.cfg.db_file, PrimaryTableRow)) as db:
+    with closing(Database(config.cfg.db_file, island_count=config.cfg.island_count)) as db:
         parent = db.weighted_sample(island_id)
         assert type(parent) == PrimaryTableRow
 
@@ -113,7 +112,7 @@ def run_worker(island_id: int):
             git.delete_workspace(workspace)
 
 def select_island() -> int:
-    with closing(Database(config.cfg.db_file, PrimaryTableRow)) as db:
+    with closing(Database(config.cfg.db_file, island_count=config.cfg.island_count)) as db:
         return db.sample_island()
 
 def run_iterations() -> int:

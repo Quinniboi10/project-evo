@@ -13,16 +13,14 @@ from contextlib import closing
 
 import unittest
 import tempfile
-import sqlite3
 
 class IslandTests(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory(prefix="evo-islands-")
         self.addCleanup(temp.cleanup)
         self.path = Path(temp.name) / "test.db"
-        self.db = Database(self.path, PrimaryTableRow)
+        self.db = Database(self.path, island_count=4)
         self.addCleanup(self.db.close)
-        self.db.init_islands(4)
         self.baseline = PrimaryTableRow("Baseline", "baseline", None, None, None, 10)
         self.db.insert_baseline(self.baseline)
 
@@ -79,36 +77,28 @@ class IslandTests(unittest.TestCase):
         with self.assertRaises(DatabaseException):
             self.add_attempt(0, 12, foreign)
         before = self.db.select("SELECT * FROM evolve")
-        self.db.cursor.execute("CREATE TRIGGER reject_member BEFORE INSERT ON island_membership BEGIN SELECT RAISE(ABORT, 'test rollback'); END")
-        with self.assertRaises(sqlite3.IntegrityError):
+        self.db.cursor.execute("CREATE TRIGGER reject_member BEFORE INSERT ON evolve BEGIN SELECT RAISE(ABORT, 'test rollback'); END")
+        with self.assertRaises(DatabaseException):
             self.add_attempt(0, 12)
         self.assertEqual(self.db.select("SELECT * FROM evolve"), before)
 
-    def test_resume_and_legacy_rejection(self):
+    def test_resume_and_count_mismatch(self):
         self.add_attempt(2, 11)
-        with closing(Database(self.path, PrimaryTableRow)) as resumed:
-            resumed.init_islands(4)
+        with closing(Database(self.path, island_count=4)) as resumed:
             self.assertEqual(resumed.select("SELECT COUNT(*) FROM evolve"), [(2,)])
-            with self.assertRaisesRegex(DatabaseException, "must match"):
-                resumed.init_islands(1)
-        legacy_path = self.path.parent / "legacy.db"
-        with closing(Database(legacy_path, PrimaryTableRow)) as legacy:
-            legacy.insert(PrimaryTableRow("Old baseline", "old", None, None, None, 1))
-        with closing(Database(legacy_path, PrimaryTableRow)) as legacy:
-            with self.assertRaisesRegex(DatabaseException, "new database"):
-                legacy.init_islands(4)
-            self.assertEqual(legacy.select("SELECT COUNT(*) FROM evolve"), [(1,)])
+        with self.assertRaisesRegex(DatabaseException, "must match"):
+            Database(self.path, island_count=1)
 
     def test_concurrent_memberships(self):
         def insert(island: int):
-            with closing(Database(self.path, PrimaryTableRow)) as db:
+            with closing(Database(self.path, island_count=4)) as db:
                 child = PrimaryTableRow.create_new_child(self.baseline, Task.IMPROVE)
                 child.score = 11
                 db.insert_attempt(child, island)
                 return island, child.id
         with ThreadPoolExecutor(max_workers=4) as pool:
             expected = list(pool.map(insert, [0, 1, 2, 3] * 3))
-        self.assertEqual(set(self.db.select("SELECT island_id, attempt_id FROM island_membership WHERE attempt_id != 1")), set(expected))
+        self.assertEqual(set(self.db.select("SELECT island_id, id FROM evolve WHERE parent_id IS NOT NULL")), set(expected))
 
     def test_island_quality_bias_flattens_with_population_imbalance(self):
         choices = Mock(return_value=[0])

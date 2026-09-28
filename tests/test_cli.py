@@ -44,7 +44,8 @@ class CliTests(unittest.TestCase):
     def test_dashboard_dispatch_and_assets(self):
         with tempfile.TemporaryDirectory() as directory, chdir(directory):
             path = Path(directory) / "run.db"
-            path.touch()
+            with closing(Database(path, island_count=1)):
+                pass
             serve_mock = Mock()
             with patch.object(dashboard, "DB_FILE", path), patch.object(dashboard.app, "run", serve_mock):
                 self.assertEqual(main.main(["dashboard", "--db", "run.db"]), 0)
@@ -58,15 +59,14 @@ class CliTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("dot"), "Graphviz dot is required")
     def test_visualize_export(self):
         with tempfile.TemporaryDirectory() as directory, chdir(directory):
-            with closing(Database("run.db", PrimaryTableRow)) as db:
-                db.init_islands(1)
+            with closing(Database("run.db", island_count=1)) as db:
                 db.insert_baseline(PrimaryTableRow("Baseline", "base", None, None, None, 1))
             self.assertEqual(main.main(["visualize", "--db", "run.db", "--format", "svg"]), 0)
             self.assertIn("Baseline", Path("visualization.svg").read_text())
 
     def test_unified_smoke(self):
         with tempfile.TemporaryDirectory() as directory:
-            result = subprocess.run([sys.executable, str(ROOT / "evo.py"), "run", "--smoke", "-i", "12", "--debug", "-c", str(ROOT / "config.toml")], cwd=directory, text=True, capture_output=True, timeout=60)
+            result = subprocess.run([sys.executable, str(ROOT / "main.py"), "run", "--smoke", "-i", "12", "--debug", "-c", str(ROOT / "config.toml")], cwd=directory, text=True, capture_output=True, timeout=60)
             for line in result.stdout.splitlines():
                 if line.startswith("Smoke artifacts: "):
                     self.addCleanup(shutil.rmtree, Path(line.removeprefix("Smoke artifacts: ")))

@@ -32,7 +32,7 @@ class SmokeIntegrationTests(unittest.TestCase):
         self.config.write_text((ROOT / "config.toml").read_text())
 
     def run_smoke(self, *args: str, env: dict|None = None):
-        result = subprocess.run([sys.executable, str(ROOT / "main.py"), "--smoke", "-c", str(self.config), *args], cwd=self.root, env=env, text=True, capture_output=True, timeout=30)
+        result = subprocess.run([sys.executable, str(ROOT / "evolve.py"), "--smoke", "-c", str(self.config), *args], cwd=self.root, env=env, text=True, capture_output=True, timeout=30)
         paths = [line.removeprefix("Smoke artifacts: ") for line in result.stdout.splitlines() if line.startswith("Smoke artifacts: ")]
         self.assertEqual(len(paths), 1, result.stderr)
         artifacts = Path(paths[0])
@@ -108,14 +108,14 @@ class SmokeIntegrationTests(unittest.TestCase):
 
     def test_normal_cli_still_requires_inputs(self):
         for args in (("-i", "1"), ("project", "eval.py", "-i", "1")):
-            result = subprocess.run([sys.executable, str(ROOT / "main.py"), *args], cwd=self.root, text=True, capture_output=True)
+            result = subprocess.run([sys.executable, str(ROOT / "evolve.py"), *args], cwd=self.root, text=True, capture_output=True)
             self.assertEqual(result.returncode, 2)
             self.assertIn("required without --smoke", result.stderr)
         self.assertFalse((self.root / "project-evo.log").exists())
 
     def test_existing_database_validation_and_verification_failure(self):
         self.config.write_text((ROOT / "config.toml").read_text().replace("island_count = 4", "island_count = 1"))
-        script = '''import main
+        script = '''import evolve as main
 import smoke
 import config
 import sqlite3
@@ -280,7 +280,7 @@ class WorkerFailureTests(unittest.TestCase):
 
     def test_workspace_cleanup_on_evaluation_error(self):
         from database import PrimaryTableRow
-        cfg = SimpleNamespace(db_file="unused", inspiration_count=2, cross_island_inspiration_probability=0.1, eval_fn=Mock(side_effect=RuntimeError("evaluation failed")))
+        cfg = SimpleNamespace(db_file="unused", island_count=1, inspiration_count=2, cross_island_inspiration_probability=0.1, eval_fn=Mock(side_effect=RuntimeError("evaluation failed")))
         parent = PrimaryTableRow("Baseline", "baseline", None, None, None, 1)
         parent.id = 1
         with patch.object(config, "cfg", cfg), patch.object(evolve, "Database") as database, patch.object(git, "create_new_workspace", return_value=Path("workspace")), patch.object(git, "delete_workspace") as cleanup, patch.object(llm, "route_prompt"), patch.object(evolve, "build_prompt", return_value="prompt"):
