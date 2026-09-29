@@ -1,4 +1,5 @@
 from .error import assert_config
+from .evaluation import EvaluationResult
 
 from argparse import Namespace
 from pathlib import Path
@@ -64,7 +65,7 @@ class Config:
 
     def _set_attributes(self):
         self.project_root                                  = Path(self.args.project_path).resolve(strict=True)
-        self.eval_fn: Callable[[Path], tuple[bool, float]] = SourceFileLoader("_workspace_eval_module", self.args.eval_file).load_module().evaluate
+        self.eval_fn: Callable[[Path], EvaluationResult|tuple[bool, float]] = SourceFileLoader("_workspace_eval_module", self.args.eval_file).load_module().evaluate
         self.objective                                     = self._objective_str
         self.iterations                                    = self.args.iterations
         self.db_file                                       = Path(self.args.db if self.args.db is not None else f"./playground/databases/{round(time.time())}.db")

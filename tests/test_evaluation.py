@@ -1,10 +1,14 @@
 from src.database import Database, PrimaryTableRow
 from src.error import EvalError
+from src.evaluation import EvaluationResult, normalize_result, format_feedback
+from src.prompt import build_run_fix_prompt
 from src import config
 from src import evolve
 from src import git
 from src import llm
 
+from importlib.machinery import SourceFileLoader
+from typing import cast
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -18,6 +22,96 @@ class EvaluationTests(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory(prefix="evo-evaluation-")
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
+
+    def test_result_contract(self):
+        self.assertEqual(normalize_result((True, 2)), EvaluationResult(True, 2))
+        result = EvaluationResult(False, float("nan"), "failed check")
+        self.assertIs(normalize_result(result), result)
+        for score in (0, -1, float("inf"), float("-inf")):
+            self.assertEqual(normalize_result((False, score)).score, score)
+        invalid: list[object] = [None, [True, 2], (True,), (True, 2, "text"), (1, 2), (True, True), (False, None), (True, "2"), EvaluationResult(False, 0, cast(str, None))]
+        for score in (0, -1, float("nan"), float("inf"), float("-inf")):
+            invalid.extend([(True, score), EvaluationResult(True, score)])
+        for value in invalid:
+            with self.subTest(value=value), self.assertRaises(EvalError):
+                normalize_result(value)
+
+    def test_feedback_formatting_and_prompt(self):
+        for text in ("", " \n\t"):
+            self.assertEqual(format_feedback(text), "")
+        for size in (7999, 8000):
+            text = "a" * size
+            self.assertEqual(format_feedback(text), text)
+        text = "a" * 4000 + "OMITTED" + "z" * 4000
+        bounded = format_feedback(text)
+        self.assertTrue(bounded.startswith("a" * 4000))
+        self.assertTrue(bounded.endswith("z" * 4000))
+        self.assertIn("[Feedback truncated; middle omitted.]", bounded)
+        self.assertNotIn("OMITTED", bounded)
+        self.assertIn("truncated", format_feedback("a" * 8001))
+        parent = PrimaryTableRow("Baseline", "baseline", None, None, None, 10)
+        child = PrimaryTableRow("Child", "child", None, None, None, 5)
+        with patch.object(config, "cfg", SimpleNamespace(branch_base="evo", objective="Faster")):
+            generic = build_run_fix_prompt(parent, child)
+            self.assertEqual(build_run_fix_prompt(parent, child, " \n"), generic)
+            self.assertNotIn("BEGIN EVALUATOR FEEDBACK", generic)
+            self.assertIn(bounded, build_run_fix_prompt(parent, child, text))
+
+    def test_external_evaluator_import(self):
+        evaluator = self.root / "evaluate.py"
+        evaluator.write_text('from src.evaluation import EvaluationResult\ndef evaluate(workspace):\n    return EvaluationResult(False, 0, "external diagnostic")\n')
+        module = SourceFileLoader("_test_external_eval", str(evaluator)).load_module()
+        self.assertEqual(normalize_result(module.evaluate(self.root)), EvaluationResult(False, 0, "external diagnostic"))
+
+    def test_baseline_feedback_and_success(self):
+        for passed in (False, True):
+            path = self.root / f"typed-baseline-{passed}.db"
+            feedback = "a" * 4000 + "OMITTED" + "z" * 4000
+            evaluate = Mock(return_value=EvaluationResult(passed, 10, feedback))
+            bootstrap = Mock()
+            cfg = SimpleNamespace(db_file=path, island_count=1, project_root=self.root, eval_fn=evaluate, branch_base="evo")
+            with patch.object(config, "cfg", cfg), patch.object(git, "bootstrap", bootstrap):
+                if passed:
+                    evolve.init_db()
+                    bootstrap.assert_called_once()
+                else:
+                    with self.assertRaises(EvalError) as error:
+                        evolve.init_db()
+                    self.assertEqual(str(error.exception), "Baseline failed to pass evaluate()\n" + format_feedback(feedback))
+                    bootstrap.assert_not_called()
+            with closing(Database(path, island_count=1)) as db:
+                self.assertEqual(db.select("SELECT score FROM evolve"), [(10,)] if passed else [])
+
+    def test_worker_feedback_retries_and_cleanup(self):
+        outcomes = [EvaluationResult(True, 5, "unused success feedback"), EvaluationResult(False, 0, "final failure"), RuntimeError("evaluator broke")]
+        for index, outcome in enumerate(outcomes):
+            with self.subTest(outcome=outcome):
+                path = self.root / f"feedback-{index}.db"
+                with closing(Database(path, island_count=1)) as db:
+                    db.insert_baseline(PrimaryTableRow("Baseline", "baseline", None, None, None, 10))
+                evaluate = Mock(side_effect=[EvaluationResult(False, 0, "FIRST FAILURE"), EvaluationResult(False, 0, "SECOND FAILURE"), outcome])
+                route = Mock(return_value="test-model")
+                cleanup = Mock()
+                workspace = self.root / "workspace"
+                cfg = SimpleNamespace(db_file=path, island_count=1, inspiration_count=0, cross_island_inspiration_probability=0, softmax_temp=0.05, eval_fn=evaluate, max_fix_attempts=2, objective="Faster", branch_base="evo")
+                with patch.object(config, "cfg", cfg), patch.object(git, "create_new_workspace", return_value=workspace), patch.object(git, "delete_workspace", cleanup), patch.object(llm, "route_prompt", route), patch.object(llm, "get_attempt_name", return_value="Attempt"):
+                    if isinstance(outcome, RuntimeError):
+                        with self.assertRaisesRegex(RuntimeError, "evaluator broke"):
+                            evolve.run_worker(0)
+                    else:
+                        evolve.run_worker(0)
+                self.assertEqual(evaluate.call_count, 3)
+                self.assertEqual(route.call_count, 3)
+                first = route.call_args_list[1].args[1]
+                second = route.call_args_list[2].args[1]
+                self.assertIn("FIRST FAILURE", first)
+                self.assertNotIn("SECOND FAILURE", first)
+                self.assertIn("SECOND FAILURE", second)
+                self.assertNotIn("FIRST FAILURE", second)
+                cleanup.assert_called_once_with(workspace)
+                with closing(Database(path, island_count=1)) as db:
+                    expected = [(10,), (5,)] if index == 0 else [(10,)]
+                    self.assertEqual(db.select("SELECT score FROM evolve ORDER BY id"), expected)
 
     def test_invalid_baseline_never_creates_branch_or_row(self):
         results = [(False, 10), (True, 0), (True, -1), (True, float("nan")), (True, float("inf")), (True, -float("inf"))]

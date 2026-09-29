@@ -1,6 +1,7 @@
 from .error import assert_config, assert_eval, KillWorkerException
 from .prompt import build_prompt, build_run_fix_prompt, build_inspiration_context
 from .database import Database, PrimaryTableRow
+from .evaluation import normalize_result, format_feedback
 from .task import Task
 from .version import version_string
 from . import config
@@ -14,7 +15,6 @@ from contextlib import closing
 import argparse
 import logging
 import random
-import math
 
 from tqdm import tqdm
 
@@ -28,8 +28,10 @@ def build_parser(add_help: bool=True) -> argparse.ArgumentParser:
                     epilog="""
   Evaluator:
       The eval_file argument must supply a file that implements the below function signature
-      evaluate(path: Path) -> bool, float
-      where the boolean represents if the test succeeded, and the float represents the score (greater than 0) of the workspace
+      evaluate(path: Path) -> EvaluationResult | tuple[bool, float]
+      Import EvaluationResult from src.evaluation; return EvaluationResult(passed, score, feedback="").
+      passed means acceptance checks passed; passing scores must be finite and greater than 0.
+      Optional feedback supplies diagnostics to repairs and baseline failure errors.
       *** EVALUATE SHOULD BE NONDESTRICTUVE AS IT WILL BE CALLED ON THE ROOT DIRECTORY ***
  """)
     parser.add_argument("project_path", help="Path to the base project (optional with --smoke)", nargs="?")
@@ -59,12 +61,12 @@ def init_db():
     with closing(Database(config.cfg.db_file, island_count=config.cfg.island_count)) as db:
         # If the database is empty, bootstrap
         if len(db.select(f"SELECT id FROM {db.PRIMARY_TABLE} LIMIT 1;")) == 0:
-            passed, score = config.cfg.eval_fn(config.cfg.project_root)
-            assert_eval(passed, "Baseline failed to pass evaluate()")
-            assert_eval(score > 0 and math.isfinite(score), "Evaluation function must be greater than 0 and finite")
+            result = normalize_result(config.cfg.eval_fn(config.cfg.project_root))
+            feedback = format_feedback(result.feedback)
+            assert_eval(result.passed, "Baseline failed to pass evaluate()" + (f"\n{feedback}" if feedback else ""))
             uuid = uuid7().hex
             git.bootstrap(f"{config.cfg.branch_base}/{uuid}")
-            db.insert_baseline(PrimaryTableRow("Baseline", uuid, None, None, None, score))
+            db.insert_baseline(PrimaryTableRow("Baseline", uuid, None, None, None, result.score))
         # Otherwise, verify all the branches still exist
         else:
             for _, uuid in db.select(f"SELECT id, uuid FROM {db.PRIMARY_TABLE};"):
@@ -88,22 +90,20 @@ def run_worker(island_id: int):
             prompt = build_prompt(parent, child, inspirations)
             child.model = llm.route_prompt(workspace, prompt, task)
 
-            passed, score = config.cfg.eval_fn(workspace)
+            result = normalize_result(config.cfg.eval_fn(workspace))
             fixes = 0
-            while not passed and fixes < config.cfg.max_fix_attempts:
+            while not result.passed and fixes < config.cfg.max_fix_attempts:
                 fixes += 1
                 logging.log(logging.INFO, f"Run UUID {child.uuid} failed verification, retrying ({fixes}/{config.cfg.max_fix_attempts})")
-                prompt = build_run_fix_prompt(parent, child)
+                prompt = build_run_fix_prompt(parent, child, result.feedback)
                 llm.route_prompt(workspace, prompt, task)
-                passed, score = config.cfg.eval_fn(workspace)
+                result = normalize_result(config.cfg.eval_fn(workspace))
 
-            if not passed:
+            if not result.passed:
                 logging.log(logging.WARNING, f"Skipping child UUID {child.uuid} after failing {fixes} attempts to pass")
                 return # Do not add the broken child to the database as reference
 
-            child.score = score
-
-            assert_eval(score > 0 and math.isfinite(score), "Evaluated scores must be greater than 0 and finitee")
+            child.score = result.score
 
             child.name = llm.get_attempt_name(workspace)
 

@@ -1,5 +1,7 @@
 # Runs a single command and rewards lower time per run across N runs
 
+from src.evaluation import EvaluationResult
+
 from pathlib import Path
 import subprocess
 import time
@@ -20,7 +22,7 @@ def run_and_time_cmd(executable: list[str], cwd: Path, stdin: str|None = None) -
     )
     return time.monotonic() - start
 
-def evaluate(workspace: Path) -> tuple[bool, float]:
+def evaluate(workspace: Path) -> EvaluationResult:
     try:
         end_time = time.monotonic() + TARGET_SEC
 
@@ -28,6 +30,10 @@ def evaluate(workspace: Path) -> tuple[bool, float]:
         while time.monotonic() < end_time:
             times.append(run_and_time_cmd(TARGET_COMMAND, workspace, TARGET_STDIN))
 
-        return True, len(times) / sum(times) # Convert to runs/s to keep higher is better
-    except Exception:
-        return False, 0
+        return EvaluationResult(True, len(times) / sum(times)) # Convert to runs/s to keep higher is better
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+        status = f"Exit status: {e.returncode}" if isinstance(e, subprocess.CalledProcessError) else f"Timed out after {e.timeout} seconds"
+        feedback = f"Command: {e.cmd!r}\n{status}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}"
+        return EvaluationResult(False, 0, feedback)
+    except Exception as e:
+        return EvaluationResult(False, 0, f"{type(e).__name__}: {e}")

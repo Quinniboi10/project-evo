@@ -186,7 +186,7 @@ class InspirationPromptTests(unittest.TestCase):
         self.assertEqual(route.call_count, 2)
         self.assertIn("+new", route.call_args_list[0].args[1])
         self.assertNotIn("BEGIN INSPIRATION", route.call_args_list[1].args[1])
-        self.assertIn("failed the tests", route.call_args_list[1].args[1])
+        self.assertIn("failed evaluation", route.call_args_list[1].args[1])
         child = database.return_value.insert_attempt.call_args.args[0]
         self.assertEqual(child.parent_id, self.parent.id)
         self.assertEqual(child.score, 12)

@@ -38,8 +38,10 @@ Arguments
 - `--smoke` - Run a protected simulation in a retained temporary repository without querying LLMs (see below)
 
 \*The eval_file argument must supply a file that implements the below function signature  
-`evaluate(path: Path) -> bool, float`  
-where the boolean represents if the test succeeded, and the float represents the score (greater than 0) of the workspace  
+`evaluate(path: Path) -> EvaluationResult | tuple[bool, float]`
+
+Import `EvaluationResult` from `src.evaluation` and return `EvaluationResult(passed, score, feedback="")`, or keep returning `(passed, score)`. `passed` means acceptance checks passed, not necessarily improvement over the parent. Passing scores must be finite and greater than zero; failed scores are ignored. Optional text feedback goes to the next repair or baseline failure error, bounded to its first and last 4,000 characters when longer than 8,000. Evaluator exceptions still propagate.
+
 ***EVALUATE SHOULD BE NONDESTRICTUVE AS IT WILL BE CALLED ON THE PROJECT ROOT DIRECTORY TO ESTABLISH A BASELINE***
 
 ### Exploration and inspiration
