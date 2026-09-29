@@ -22,6 +22,11 @@ def run_and_time_cmd(executable: list[str], cwd: Path, stdin: str|None = None) -
     )
     return time.monotonic() - start
 
+def _output_text(output: str|bytes|None) -> str:
+    if isinstance(output, bytes):
+        return output.decode(errors="replace")
+    return output or ""
+
 def evaluate(workspace: Path) -> EvaluationResult:
     try:
         end_time = time.monotonic() + TARGET_SEC
@@ -33,7 +38,7 @@ def evaluate(workspace: Path) -> EvaluationResult:
         return EvaluationResult(True, len(times) / sum(times)) # Convert to runs/s to keep higher is better
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
         status = f"Exit status: {e.returncode}" if isinstance(e, subprocess.CalledProcessError) else f"Timed out after {e.timeout} seconds"
-        feedback = f"Command: {e.cmd!r}\n{status}\nstdout:\n{e.stdout}\nstderr:\n{e.stderr}"
+        feedback = f"Command: {e.cmd!r}\n{status}\nstdout:\n{_output_text(e.stdout)}\nstderr:\n{_output_text(e.stderr)}"
         return EvaluationResult(False, 0, feedback)
     except Exception as e:
         return EvaluationResult(False, 0, f"{type(e).__name__}: {e}")

@@ -39,6 +39,12 @@ class RuntimeEvaluatorTests(unittest.TestCase):
                         self.assertIn(repr(command), result.feedback)
                     else:
                         self.assertEqual(result.feedback, "RuntimeError: unexpected failure")
+            for output, expected in ((b"first\nsecond\xff", "first\nsecond\ufffd"), (None, "")):
+                with self.subTest(name=name, timeout_output=output):
+                    error = subprocess.TimeoutExpired(command, 600, output=output, stderr=output)
+                    with patch.object(module.subprocess, "run", side_effect=error):
+                        result = module.evaluate(root)
+                    self.assertEqual(result, EvaluationResult(False, 0, f"Command: {command!r}\nTimed out after 600 seconds\nstdout:\n{expected}\nstderr:\n{expected}"))
             # One timed run; compilation time remains excluded from the score.
             times = [0, 0, 0, 2, 6]
             if name == "compiled-runtime":
