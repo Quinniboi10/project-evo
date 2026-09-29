@@ -2,6 +2,7 @@ from .version import version_string
 from .utils import abbreviate_score
 
 from .database import Database
+from .error import assert_db
 
 from contextlib import closing
 
@@ -24,18 +25,21 @@ def run(args: argparse.Namespace):
         graph = graphviz.Digraph("Exploration diagram", comment="Project Evo")
         graph.attr(rankdir='LR', concentrate='true')
 
-        id_to_score: dict[int, float] = {}
+        rows = db.select(f"SELECT id, name, score, parent_id, task FROM {db.PRIMARY_TABLE} ORDER BY id;")
+        id_to_score: dict[int, float] = {id: score for id, _, score, _, _ in rows}
+        parents = {id: parent_id for id, _, _, parent_id, _ in rows}
+        assert_db(all(parent is None or parent in parents for parent in parents.values()), "Lineage references a missing parent")
 
         best_path: set[int] = set()
-        curr = db.select(f"SELECT id, parent_id FROM {db.PRIMARY_TABLE} ORDER BY score DESC LIMIT 1;")[0]
-
-        while curr[1] is not None:
-            best_path.add(curr[0])
-            curr = db.select(f"SELECT id, parent_id FROM {db.PRIMARY_TABLE} WHERE id = {curr[1]};")[0]
+        if rows:
+            current = max(rows, key=lambda row: row[2])[0]
+            while parents[current] is not None:
+                assert_db(current not in best_path, "Lineage contains a cycle")
+                best_path.add(current)
+                current = parents[current]
 
         # https://graphviz.org/doc/info/colors.html
-        for id, name, score, parent_id, task in db.select(f"SELECT id, name, score, parent_id, task FROM {db.PRIMARY_TABLE} ORDER BY id;"):
-            id_to_score[id] = score
+        for id, name, score, parent_id, task in rows:
             if parent_id is None:
                 color = "cornflowerblue"
             elif id in best_path:

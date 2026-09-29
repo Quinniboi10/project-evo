@@ -8,6 +8,8 @@ Requires Git, Python 3.14+, and an authenticated OpenAI Codex (0.155.1+) or Open
 
 Run `project-evo init [PATH]` to create an editable config (default: `./config.toml`); existing files are never overwritten. Review providers and models before running. Use `project-evo run -c PATH ...` for a config elsewhere.
 
+Use unquoted TOML numbers: concurrency and timeout must be positive integers, retry counts nonnegative integers, and temperature finite and positive. Provider capacity may be zero to route that provider's work to the fallback; fallback capacity must cover all workers.
+
 Choose a measurable objective and configure your available providers, models and routing. Adapt an [example evaluator](#examples) or write one from scratch to check correctness and measure improvement. Verify the baseline, start with 5 iterations, then compare the baseline and best passing result and review the changes. Agents should ask about objective or provider choices they cannot infer.
 
 ## Usage

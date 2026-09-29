@@ -58,7 +58,8 @@ class ReevaluationTests(unittest.TestCase):
         with closing(Database(self.path, require_exist=True)) as db:
             row = db.sample_reevaluation(set())
             assert row is not None
-            self.assertEqual((row.score, row.evaluation_count), (70, 13))
+            self.assertAlmostEqual(row.score, 70, places=12)
+            self.assertEqual(row.evaluation_count, 13)
         before = self.db.select("SELECT * FROM evolve")
         with self.assertRaises(DatabaseException):
             self.db.record_evaluation(999, 20)

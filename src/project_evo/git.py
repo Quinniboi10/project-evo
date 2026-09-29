@@ -27,9 +27,9 @@ def inspiration_diff(parent: PrimaryTableRow, reference: PrimaryTableRow) -> str
         diff = prefix[:prefix.rfind("\n") + 1] + marker
     return diff
 
-def exec_in_workspace(workspace: Path, cmd: str):
+def exec_in_workspace(workspace: Path, cmd: list[str]):
     with workspace_locks.setdefault(workspace, Lock()):
-        subprocess.run(cmd, cwd=workspace, shell=True, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(cmd, cwd=workspace, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def autocommit(workspace: Path):
     try:
@@ -46,26 +46,26 @@ def autocommit(workspace: Path):
         raise KillWorkerException(f"{e.cmd} failed") from e
 
 def bootstrap(target_branch: str):
-    exec_in_workspace(config.cfg.project_root, f"git checkout -b \"{target_branch}\"")
+    exec_in_workspace(config.cfg.project_root, ["git", "checkout", "-b", target_branch])
     autocommit(config.cfg.project_root)
 
 def ensure_branch_exists(uuid: str):
     name = f"{config.cfg.branch_base}/{uuid}"
     try:
-        exec_in_workspace(config.cfg.project_root, f"git rev-parse --verify \"{name}\"")
+        exec_in_workspace(config.cfg.project_root, ["git", "rev-parse", "--verify", f"refs/heads/{name}"])
     except subprocess.CalledProcessError:
         raise KillPoolException(f"Invalid or corrupted database file; Database expects git branch '{name}' but it does not exist.")
 
 def create_new_workspace(parent: PrimaryTableRow, child: PrimaryTableRow) -> Path:
     branch = f"{config.cfg.branch_base}/{child.uuid}"
-    path = f"{config.cfg.workspace_base}/{child.uuid}"
-    parent_br = f"{config.cfg.branch_base}/{parent.uuid}"
+    path = (config.cfg.project_root / config.cfg.workspace_base / child.uuid).resolve()
+    parent_br = f"refs/heads/{config.cfg.branch_base}/{parent.uuid}"
 
-    (config.cfg.project_root / config.cfg.workspace_base).mkdir(exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
 
-    exec_in_workspace(config.cfg.project_root, f"git worktree add -b \"{branch}\" \"{path}\" \"{parent_br}\"")
+    exec_in_workspace(config.cfg.project_root, ["git", "worktree", "add", "-b", branch, "--", str(path), parent_br])
 
-    return (config.cfg.project_root / path).resolve(strict=True)
+    return path.resolve(strict=True)
 
 @contextmanager
 def evaluation_workspace(row: PrimaryTableRow):
@@ -80,4 +80,4 @@ def evaluation_workspace(row: PrimaryTableRow):
         delete_workspace(path)
 
 def delete_workspace(workspace: Path):
-    exec_in_workspace(config.cfg.project_root, f"git worktree remove --force \"{str(workspace)}\"")
+    exec_in_workspace(config.cfg.project_root, ["git", "worktree", "remove", "--force", "--", str(workspace)])

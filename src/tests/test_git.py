@@ -1,8 +1,12 @@
-from project_evo.error import KillWorkerException
+from project_evo.error import KillWorkerException, KillPoolException
+from project_evo.database import PrimaryTableRow
+from project_evo.task import Task
+from project_evo import config
 from project_evo import git
 from project_evo import smoke
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import subprocess
@@ -73,6 +77,34 @@ class AutocommitTests(unittest.TestCase):
                     with self.assertRaises(KillWorkerException):
                         git.autocommit(self.root)
                 self.assertEqual(run_mock.call_count, len(results))
+
+    def test_worktree_paths_are_literal_and_nested_directories_are_created(self):
+        (self.root / "code.txt").write_text("initial\n")
+        git.autocommit(self.root)
+        parent = PrimaryTableRow("Baseline", "baseline", None, None, None, 1)
+        for base in ("nested/workspaces", "spaces and 'quotes'", 'literal-$(touch SHOULD_NOT_EXIST)-"quotes"', "-workspaces"):
+            with self.subTest(base=base):
+                cfg = SimpleNamespace(project_root=self.root, workspace_base=base, branch_base="evo")
+                with patch.object(config, "cfg", cfg):
+                    if not self.run_git("branch", "--list", "evo/baseline"):
+                        git.bootstrap("evo/baseline")
+                    child = PrimaryTableRow.create_new_child(parent, Task.IMPROVE)
+                    workspace = git.create_new_workspace(parent, child)
+                    self.assertEqual(workspace, self.root / base / child.uuid)
+                    self.assertEqual((workspace / "code.txt").read_text(), "initial\n")
+                    git.ensure_branch_exists(child.uuid)
+                    git.delete_workspace(workspace)
+                    self.assertFalse(workspace.exists())
+                    self.assertFalse((self.root / "SHOULD_NOT_EXIST").exists())
+
+    def test_resume_requires_a_branch_not_a_tag(self):
+        (self.root / "code.txt").write_text("initial\n")
+        git.autocommit(self.root)
+        self.run_git("tag", "evo/tag-only")
+        with patch.object(config, "cfg", SimpleNamespace(project_root=self.root, branch_base="evo")):
+            for uuid in ("missing", "tag-only"):
+                with self.subTest(uuid=uuid), self.assertRaises(KillPoolException):
+                    git.ensure_branch_exists(uuid)
 
 if __name__ == "__main__":
     unittest.main()

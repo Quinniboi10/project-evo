@@ -58,6 +58,14 @@ class EvaluationTests(unittest.TestCase):
             self.assertNotIn("BEGIN EVALUATOR FEEDBACK", generic)
             self.assertIn(bounded, build_run_fix_prompt(parent, child, text))
 
+    def test_integer_scores_are_storable_and_overflow_is_an_evaluation_error(self):
+        result = normalize_result((True, 10**20))
+        with closing(Database(self.root / "integer.db", island_count=1)) as db:
+            db.insert_baseline(PrimaryTableRow("Baseline", "base", None, None, None, result.score))
+            self.assertEqual(db.select("SELECT score FROM evolve"), [(1e20,)])
+        with self.assertRaises(EvalError):
+            normalize_result((True, 10**400))
+
     def test_external_evaluator_import(self):
         evaluator = self.root / "evaluate.py"
         evaluator.write_text('from project_evo.evaluation import EvaluationResult\ndef evaluate(workspace):\n    return EvaluationResult(False, 0, "external diagnostic")\n')

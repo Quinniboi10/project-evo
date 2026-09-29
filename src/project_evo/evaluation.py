@@ -22,7 +22,12 @@ def normalize_result(value: object) -> EvaluationResult:
     assert_eval(type(result.score) in (int, float), "Evaluation score must be numeric (not boolean)")
     assert_eval(isinstance(result.feedback, str), "Evaluation feedback must be a string")
     if result.passed:
-        assert_eval(result.score > 0 and (isinstance(result.score, int) or math.isfinite(result.score)), "Evaluated scores must be greater than 0 and finite")
+        try:
+            score = float(result.score)
+        except OverflowError as e:
+            raise EvalError("Evaluated scores must be representable as a finite float") from e
+        assert_eval(score > 0 and math.isfinite(score), "Evaluated scores must be greater than 0 and finite")
+        result = EvaluationResult(result.passed, score, result.feedback)
     return result
 
 def format_feedback(feedback: str) -> str:

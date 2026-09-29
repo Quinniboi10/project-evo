@@ -137,11 +137,14 @@ class IslandConfigTests(unittest.TestCase):
         cfg.softmax_temp = 0.05
         cfg.objective = "test"
         cfg.inspiration_count = 2
-        cfg._routing = {}
-        cfg.concurrency = 0
+        cfg._routing = {"fallback": "test"}
+        cfg.concurrency = 1
+        cfg.iterations = 1
+        cfg.max_fix_attempts = 0
+        cfg.llm_timeout_sec = 10
         cfg.evaluation_concurrency = 1
         cfg.fallback_model = "test"
-        cfg._providers = {"test": {"max_concurrency": 0}}
+        cfg._providers = {"test": {"max_concurrency": 1, "adapter": "codex", "model": "test"}}
         validate = Mock()
         cfg.args = Namespace(smoke=True, smoke_session=SimpleNamespace(validate=validate))
         for count, probability in ((4, 0.1), (1, 0), (8, 1)):
