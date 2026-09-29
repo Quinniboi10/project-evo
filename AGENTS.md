@@ -128,7 +128,7 @@ Include essential usage and configuration details; avoid implementation walkthro
 ## Validation
 
 The smoke tests use standard-library unittest. Run them with
-`python3 -m unittest discover -s tests -v` in a Python 3.14+ environment.
+`python3 -m unittest discover -s src/tests -v` in a Python 3.14+ environment.
 Choose focused checks for the behavior being changed and report what was run.
 
 - Changed Python files, including tests, must have no Pyright errors or warnings.

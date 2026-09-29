@@ -9,7 +9,7 @@ import unittest
 
 class RuntimeEvaluatorTests(unittest.TestCase):
     def test_runtime_examples(self):
-        root = Path(__file__).resolve().parents[1]
+        root = Path(__file__).resolve().parents[2]
         for name in ("command-runtime", "compiled-runtime"):
             module = SourceFileLoader(f"_test_{name.replace('-', '_')}", str(root / "examples" / name / "evaluate.py")).load_module()
             command = module.PREFLIGHT_COMMANDS[0] if name == "compiled-runtime" else module.TARGET_COMMAND

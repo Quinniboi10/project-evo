@@ -1,4 +1,4 @@
-// Run with node tests/test_dashboard.js. Tests state transitions without a browser.
+// Run with node src/tests/test_dashboard.js. Tests state transitions without a browser.
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
@@ -70,7 +70,7 @@ const context = vm.createContext({
     setInterval() {}, clearInterval() {}, AbortSignal, AbortController,
     fetch: () => new Promise(() => {}), console, performance
 });
-const html = fs.readFileSync(`${__dirname}/../src/dashboard/index.html`, "utf8");
+const html = fs.readFileSync(`${__dirname}/../dashboard/index.html`, "utf8");
 vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context);
 const run = code => vm.runInContext(code, context);
 const result = code => JSON.parse(JSON.stringify(run(code)));

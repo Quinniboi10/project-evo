@@ -16,7 +16,7 @@ import sys
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 
 class CliTests(unittest.TestCase):
     def test_help_and_version(self):

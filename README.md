@@ -77,9 +77,9 @@ Run `python3 -m src.main run --smoke -i 12 --debug` to check worktrees, commits,
 - Cycles through success, repair and exhausted retries (use at least 3 iterations); expected failures are skipped normally
 - Prints `SMOKE PASSED` after verification and retains the repository, database and logs at the printed location for inspection and manual cleanup
 
-Tests: `python3 -m unittest discover -s tests -v`
+Tests: `python3 -m unittest discover -s src/tests -v`
 
-Dashboard tests: `node tests/test_dashboard.js`. Browser regressions: `node tests/test_dashboard_browser.js` (requires Playwright and Chromium).
+Dashboard tests: `node src/tests/test_dashboard.js`. Browser regressions: `node src/tests/test_dashboard_browser.js` (requires Playwright and Chromium).
 
 ### Examples
 - [Command runtime](examples/command-runtime/README.md) - Optimize toward minimal command runtime

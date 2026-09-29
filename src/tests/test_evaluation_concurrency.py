@@ -15,7 +15,7 @@ import unittest
 
 class EvaluationConcurrencyTests(unittest.TestCase):
     def test_configuration(self):
-        template = (Path(__file__).resolve().parents[1] / "config.toml").read_text()
+        template = (Path(__file__).resolve().parents[2] / "config.toml").read_text()
         with tempfile.TemporaryDirectory(prefix="evo-concurrency-") as temporary:
             root = Path(temporary)
             evaluator = root / "evaluate.py"
