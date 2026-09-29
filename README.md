@@ -44,6 +44,8 @@ Import `EvaluationResult` from `src.evaluation` and return `EvaluationResult(pas
 
 ***EVALUATE SHOULD BE NONDESTRICTUVE AS IT WILL BE CALLED ON THE PROJECT ROOT DIRECTORY TO ESTABLISH A BASELINE***
 
+Set `[general].evaluation_concurrency` to limit simultaneous evaluator calls (the supplied config uses `1`; omitted values default to `concurrency`). Waiting evaluations occupy worker slots. This limit applies within one Evo process; agent commands and other processes can still compete for resources. Repeated measurements and aggregation belong in your evaluator.
+
 ### Exploration and inspiration
 
 Each attempt starts from one "parent" workspace. Exploration (30%) tries alternative approaches; improvement refines the current implementation.

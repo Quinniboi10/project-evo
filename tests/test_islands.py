@@ -139,6 +139,7 @@ class IslandConfigTests(unittest.TestCase):
         cfg.inspiration_count = 2
         cfg._routing = {}
         cfg.concurrency = 0
+        cfg.evaluation_concurrency = 1
         cfg.fallback_model = "test"
         cfg._providers = {"test": {"max_concurrency": 0}}
         validate = Mock()

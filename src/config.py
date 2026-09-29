@@ -3,6 +3,7 @@ from .evaluation import EvaluationResult
 
 from argparse import Namespace
 from pathlib import Path
+from threading import BoundedSemaphore
 
 from importlib.machinery import SourceFileLoader
 from typing import Callable, cast
@@ -28,8 +29,10 @@ class Config:
 
         self._set_attributes()
         self._sanitize_inputs()
+        self.evaluation_semaphore = BoundedSemaphore(self.evaluation_concurrency)
 
     def _sanitize_inputs(self):
+        assert_config(type(self.evaluation_concurrency) is int and self.evaluation_concurrency > 0, "general.evaluation_concurrency must be a positive integer")
         assert_config(self.softmax_temp > 0, "Softmax temperature must be greater than 0")
         assert_config(len(self.objective) > 0, "Objective does not exist")
         assert_config(type(self.inspiration_count) is int and self.inspiration_count >= 0, "general.inspiration_count is required and must be a nonnegative integer")
@@ -74,6 +77,7 @@ class Config:
 
         self.softmax_temp     = float(self.config["general"]["temperature"])
         self.concurrency      = int(self.config["general"]["concurrency"])
+        self.evaluation_concurrency = self.config["general"].get("evaluation_concurrency", self.concurrency)
         self.max_fix_attempts = int(self.config["general"]["max_fix_attempts"])
         self.llm_timeout_sec  = int(self.config["general"]["llm_timeout_sec"])
         self.inspiration_count = self.config["general"].get("inspiration_count")

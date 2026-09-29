@@ -18,6 +18,26 @@ The runtime requires Python 3.14 or newer; dependencies are in `requirements.txt
 - `examples/`: evaluator templates and their usage instructions.
 - `configs/`: OpenCode configuration and sandbox policy.
 
+## Engineering philosophy
+
+**Make it work first, then make it better.** Apply the user's SpaceX-inspired
+approach to planning and implementation:
+
+- Question assumptions and identify the actual behavior needed. Remove unnecessary
+  requirements and proposed components before designing or optimizing them.
+- Build the smallest complete implementation that demonstrates the requested
+  behavior end to end. Minimize structural changes and new abstractions; every
+  additional change introduces risk.
+- Test the behavior, learn from failures and iterate. Working means demonstrated
+  correctness, not merely code that runs or a scaffold with unfinished behavior.
+- Once the behavior works, address polish, performance, user experience and release
+  readiness in separate, justified increments. Defer speculative generalization,
+  packaging and automation until the working implementation establishes a need.
+- If performance, usability or delivery is itself the requested behavior, include
+  the minimum needed to meet that requirement in the working implementation.
+- Keep the existing style, compatibility, cleanup and validation requirements.
+  These support a correct implementation and remain part of making it work.
+
 ## Required code style
 
 The user's existing code style is the standard for **all new code and changes**.

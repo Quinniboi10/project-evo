@@ -1,7 +1,7 @@
 from .error import assert_config, assert_eval, KillWorkerException
 from .prompt import build_prompt, build_run_fix_prompt, build_inspiration_context
 from .database import Database, PrimaryTableRow
-from .evaluation import normalize_result, format_feedback
+from .evaluation import EvaluationResult, normalize_result, format_feedback
 from .task import Task
 from .version import version_string
 from . import config
@@ -11,6 +11,7 @@ from . import llm
 from concurrent.futures import ThreadPoolExecutor, wait
 from uuid import uuid7
 from contextlib import closing
+from pathlib import Path
 
 import argparse
 import logging
@@ -57,11 +58,15 @@ def check_requirements():
     for adapter in set(config.cfg.adapter(m) for m in config.cfg.models):
         assert_config(which(adapter) is not None, f"The current configuration expects the command '{adapter}' but it cannot be found")
 
+def _evaluate(workspace: Path) -> EvaluationResult:
+    with config.cfg.evaluation_semaphore:
+        return normalize_result(config.cfg.eval_fn(workspace))
+
 def init_db():
     with closing(Database(config.cfg.db_file, island_count=config.cfg.island_count)) as db:
         # If the database is empty, bootstrap
         if len(db.select(f"SELECT id FROM {db.PRIMARY_TABLE} LIMIT 1;")) == 0:
-            result = normalize_result(config.cfg.eval_fn(config.cfg.project_root))
+            result = _evaluate(config.cfg.project_root)
             feedback = format_feedback(result.feedback)
             assert_eval(result.passed, "Baseline failed to pass evaluate()" + (f"\n{feedback}" if feedback else ""))
             uuid = uuid7().hex
@@ -90,14 +95,14 @@ def run_worker(island_id: int):
             prompt = build_prompt(parent, child, inspirations)
             child.model = llm.route_prompt(workspace, prompt, task)
 
-            result = normalize_result(config.cfg.eval_fn(workspace))
+            result = _evaluate(workspace)
             fixes = 0
             while not result.passed and fixes < config.cfg.max_fix_attempts:
                 fixes += 1
                 logging.log(logging.INFO, f"Run UUID {child.uuid} failed verification, retrying ({fixes}/{config.cfg.max_fix_attempts})")
                 prompt = build_run_fix_prompt(parent, child, result.feedback)
                 llm.route_prompt(workspace, prompt, task)
-                result = normalize_result(config.cfg.eval_fn(workspace))
+                result = _evaluate(workspace)
 
             if not result.passed:
                 logging.log(logging.WARNING, f"Skipping child UUID {child.uuid} after failing {fixes} attempts to pass")

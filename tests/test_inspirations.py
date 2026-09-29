@@ -7,6 +7,7 @@ from src import prompt
 from src import smoke
 
 from pathlib import Path
+from threading import BoundedSemaphore
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -172,6 +173,7 @@ class InspirationPromptTests(unittest.TestCase):
     def test_worker_injects_once_and_keeps_repairs_focused(self):
         self.cfg.db_file = "unused"
         self.cfg.max_fix_attempts = 1
+        self.cfg.evaluation_semaphore = BoundedSemaphore(1)
         self.cfg.eval_fn = Mock(side_effect=[(False, 0), (True, 12)])
         database = Mock()
         cleanup = Mock()

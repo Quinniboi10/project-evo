@@ -7,6 +7,7 @@ from src import evolve
 from src import smoke
 
 from pathlib import Path
+from threading import BoundedSemaphore
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from contextlib import closing
@@ -280,7 +281,7 @@ class WorkerFailureTests(unittest.TestCase):
 
     def test_workspace_cleanup_on_evaluation_error(self):
         from src.database import PrimaryTableRow
-        cfg = SimpleNamespace(db_file="unused", island_count=1, inspiration_count=2, cross_island_inspiration_probability=0.1, eval_fn=Mock(side_effect=RuntimeError("evaluation failed")))
+        cfg = SimpleNamespace(db_file="unused", island_count=1, inspiration_count=2, cross_island_inspiration_probability=0.1, evaluation_semaphore=BoundedSemaphore(1), eval_fn=Mock(side_effect=RuntimeError("evaluation failed")))
         parent = PrimaryTableRow("Baseline", "baseline", None, None, None, 1)
         parent.id = 1
         with patch.object(config, "cfg", cfg), patch.object(evolve, "Database") as database, patch.object(git, "create_new_workspace", return_value=Path("workspace")), patch.object(git, "delete_workspace") as cleanup, patch.object(llm, "route_prompt"), patch.object(evolve, "build_prompt", return_value="prompt"):

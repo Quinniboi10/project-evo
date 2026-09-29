@@ -10,6 +10,7 @@ from src import llm
 from importlib.machinery import SourceFileLoader
 from typing import cast
 from pathlib import Path
+from threading import BoundedSemaphore
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 from contextlib import closing
@@ -67,9 +68,13 @@ class EvaluationTests(unittest.TestCase):
         for passed in (False, True):
             path = self.root / f"typed-baseline-{passed}.db"
             feedback = "a" * 4000 + "OMITTED" + "z" * 4000
-            evaluate = Mock(return_value=EvaluationResult(passed, 10, feedback))
+            def check_baseline(workspace: Path):
+                self.assertFalse(cfg.evaluation_semaphore.acquire(blocking=False))
+                return EvaluationResult(passed, 10, feedback)
+
+            evaluate = Mock(side_effect=check_baseline)
             bootstrap = Mock()
-            cfg = SimpleNamespace(db_file=path, island_count=1, project_root=self.root, eval_fn=evaluate, branch_base="evo")
+            cfg = SimpleNamespace(db_file=path, island_count=1, project_root=self.root, eval_fn=evaluate, evaluation_semaphore=BoundedSemaphore(1), branch_base="evo")
             with patch.object(config, "cfg", cfg), patch.object(git, "bootstrap", bootstrap):
                 if passed:
                     evolve.init_db()
@@ -89,11 +94,25 @@ class EvaluationTests(unittest.TestCase):
                 path = self.root / f"feedback-{index}.db"
                 with closing(Database(path, island_count=1)) as db:
                     db.insert_baseline(PrimaryTableRow("Baseline", "baseline", None, None, None, 10))
-                evaluate = Mock(side_effect=[EvaluationResult(False, 0, "FIRST FAILURE"), EvaluationResult(False, 0, "SECOND FAILURE"), outcome])
-                route = Mock(return_value="test-model")
+                results = iter([EvaluationResult(False, 0, "FIRST FAILURE"), EvaluationResult(False, 0, "SECOND FAILURE"), outcome])
+
+                def check_evaluation(workspace: Path):
+                    self.assertFalse(cfg.evaluation_semaphore.acquire(blocking=False))
+                    result = next(results)
+                    if isinstance(result, RuntimeError):
+                        raise result
+                    return result
+
+                def check_agent(*args):
+                    self.assertTrue(cfg.evaluation_semaphore.acquire(blocking=False))
+                    cfg.evaluation_semaphore.release()
+                    return "test-model"
+
+                evaluate = Mock(side_effect=check_evaluation)
+                route = Mock(side_effect=check_agent)
                 cleanup = Mock()
                 workspace = self.root / "workspace"
-                cfg = SimpleNamespace(db_file=path, island_count=1, inspiration_count=0, cross_island_inspiration_probability=0, softmax_temp=0.05, eval_fn=evaluate, max_fix_attempts=2, objective="Faster", branch_base="evo")
+                cfg = SimpleNamespace(db_file=path, island_count=1, inspiration_count=0, cross_island_inspiration_probability=0, softmax_temp=0.05, eval_fn=evaluate, evaluation_semaphore=BoundedSemaphore(1), max_fix_attempts=2, objective="Faster", branch_base="evo")
                 with patch.object(config, "cfg", cfg), patch.object(git, "create_new_workspace", return_value=workspace), patch.object(git, "delete_workspace", cleanup), patch.object(llm, "route_prompt", route), patch.object(llm, "get_attempt_name", return_value="Attempt"):
                     if isinstance(outcome, RuntimeError):
                         with self.assertRaisesRegex(RuntimeError, "evaluator broke"):
@@ -120,7 +139,7 @@ class EvaluationTests(unittest.TestCase):
                 path = self.root / f"baseline-{index}.db"
                 evaluate = Mock(return_value=result)
                 bootstrap = Mock()
-                cfg = SimpleNamespace(db_file=path, island_count=1, project_root=self.root, eval_fn=evaluate, branch_base="evo")
+                cfg = SimpleNamespace(db_file=path, island_count=1, project_root=self.root, eval_fn=evaluate, evaluation_semaphore=BoundedSemaphore(1), branch_base="evo")
                 with patch.object(config, "cfg", cfg), patch.object(git, "bootstrap", bootstrap):
                     with self.assertRaises(EvalError):
                         evolve.init_db()
@@ -141,7 +160,7 @@ class EvaluationTests(unittest.TestCase):
                     route = Mock(return_value="test-model")
                     cleanup = Mock()
                     workspace = self.root / "workspace"
-                    cfg = SimpleNamespace(db_file=path, island_count=1, inspiration_count=0, cross_island_inspiration_probability=0, softmax_temp=0.05, eval_fn=evaluate, max_fix_attempts=1, objective="Faster", branch_base="evo")
+                    cfg = SimpleNamespace(db_file=path, island_count=1, inspiration_count=0, cross_island_inspiration_probability=0, softmax_temp=0.05, eval_fn=evaluate, evaluation_semaphore=BoundedSemaphore(1), max_fix_attempts=1, objective="Faster", branch_base="evo")
                     with patch.object(config, "cfg", cfg), patch.object(git, "create_new_workspace", return_value=workspace), patch.object(git, "delete_workspace", cleanup), patch.object(llm, "route_prompt", route):
                         with self.assertRaises(EvalError):
                             evolve.run_worker(0)
