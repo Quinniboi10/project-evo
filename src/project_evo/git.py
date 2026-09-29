@@ -31,12 +31,17 @@ def exec_in_workspace(workspace: Path, cmd: str):
 
 def autocommit(workspace: Path):
     try:
-        exec_in_workspace(workspace, f"git add . && git commit -m 'Autocommit all changes'")
+        with workspace_locks.setdefault(workspace, Lock()):
+            subprocess.run(["git", "add", "."], cwd=workspace, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # Only a successful index comparison means there is nothing to commit.
+            diff = subprocess.run(["git", "diff", "--cached", "--quiet", "--exit-code", "--no-ext-diff"], cwd=workspace, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            if diff.returncode == 0:
+                return
+            if diff.returncode != 1:
+                diff.check_returncode()
+            subprocess.run(["git", "commit", "-m", "Autocommit all changes"], cwd=workspace, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except subprocess.CalledProcessError as e:
-        if e.returncode == 1: # TODO: more narrow than just checking exit code
-            pass
-        else:
-            raise KillWorkerException(f"{e.cmd} failed")
+        raise KillWorkerException(f"{e.cmd} failed") from e
 
 def bootstrap(target_branch: str):
     exec_in_workspace(config.cfg.project_root, f"git checkout -b \"{target_branch}\"")
