@@ -28,20 +28,20 @@ def main(argv: list[str]|None=None) -> int:
     with TemporaryDirectory(prefix="project-evo-build-") as directory:
         build = Path(directory)
         # A package import preserves the CLI's relative imports when frozen.
-        entry = build / "project_evo.py"
+        entry = build / "launcher.py"
         entry.write_text(
             "from multiprocessing import freeze_support\n\n"
             "if __name__ == \"__main__\":\n"
             "    freeze_support()\n"
-            "    from src.main import main\n"
+            "    from project_evo.main import main\n"
             "    raise SystemExit(main())\n", encoding="utf-8"
         )
         command = [
             sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--onefile", "--console",
             "--name", "project-evo", "--distpath", str(output), "--workpath", str(build / "work"),
-            "--specpath", str(build), "--paths", str(ROOT),
-            "--add-data", f"{ROOT / 'src' / 'dashboard'}:src/dashboard",
-            "--add-data", f"{ROOT / 'configs'}:configs"
+            "--specpath", str(build), "--paths", str(ROOT / "src"),
+            "--add-data", f"{ROOT / 'src' / 'project_evo' / 'dashboard'}:project_evo/dashboard",
+            "--add-data", f"{ROOT / 'src' / 'project_evo' / 'configs'}:project_evo/configs"
         ]
         for package in args.collect_all:
             command.extend(["--collect-all", package])
@@ -53,7 +53,7 @@ def main(argv: list[str]|None=None) -> int:
     # Keep configuration editable and preserve it on subsequent builds.
     config = output / "config.toml"
     if not config.exists():
-        shutil.copy2(ROOT / "config.toml", config)
+        shutil.copy2(ROOT / "src" / "project_evo" / "configs" / "default.toml", config)
     binary = output / ("project-evo.exe" if sys.platform == "win32" else "project-evo")
     print(f"Built: {binary}")
     print(f"Run from {output}, or pass -c {config} to the run command.")

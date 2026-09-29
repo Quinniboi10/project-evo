@@ -1,10 +1,10 @@
-from src.error import KillPoolException, KillWorkerException
-from src.task import Task
-from src import config
-from src import git
-from src import llm
-from src import evolve
-from src import smoke
+from project_evo.error import KillPoolException, KillWorkerException
+from project_evo.task import Task
+from project_evo import config
+from project_evo import git
+from project_evo import llm
+from project_evo import evolve
+from project_evo import smoke
 
 from pathlib import Path
 from threading import BoundedSemaphore
@@ -33,7 +33,7 @@ class SmokeIntegrationTests(unittest.TestCase):
         self.config.write_text((ROOT / "config.toml").read_text())
 
     def run_smoke(self, *args: str, env: dict|None = None):
-        result = subprocess.run([sys.executable, "-m", "src.evolve", "--smoke", "-c", str(self.config), *args], cwd=self.root, env={**(os.environ if env is None else env), "PYTHONPATH": str(ROOT)}, text=True, capture_output=True, timeout=30)
+        result = subprocess.run([sys.executable, "-m", "project_evo.evolve", "--smoke", "-c", str(self.config), *args], cwd=self.root, env={**(os.environ if env is None else env), "PYTHONPATH": str(ROOT / "src")}, text=True, capture_output=True, timeout=30)
         paths = [line.removeprefix("Smoke artifacts: ") for line in result.stdout.splitlines() if line.startswith("Smoke artifacts: ")]
         self.assertEqual(len(paths), 1, result.stderr)
         artifacts = Path(paths[0])
@@ -109,16 +109,16 @@ class SmokeIntegrationTests(unittest.TestCase):
 
     def test_normal_cli_still_requires_inputs(self):
         for args in (("-i", "1"), ("project", "eval.py", "-i", "1")):
-            result = subprocess.run([sys.executable, "-m", "src.evolve", *args], cwd=self.root, env={**os.environ, "PYTHONPATH": str(ROOT)}, text=True, capture_output=True)
+            result = subprocess.run([sys.executable, "-m", "project_evo.evolve", *args], cwd=self.root, env={**os.environ, "PYTHONPATH": str(ROOT / "src")}, text=True, capture_output=True)
             self.assertEqual(result.returncode, 2)
             self.assertIn("required without --smoke", result.stderr)
         self.assertFalse((self.root / "project-evo.log").exists())
 
     def test_existing_database_validation_and_verification_failure(self):
         self.config.write_text((ROOT / "config.toml").read_text().replace("island_count = 4", "island_count = 1"))
-        script = '''from src import evolve as main
-from src import smoke
-from src import config
+        script = '''from project_evo import evolve as main
+from project_evo import smoke
+from project_evo import config
 import sqlite3
 import sys
 
@@ -280,7 +280,7 @@ class WorkerFailureTests(unittest.TestCase):
             self.assertEqual(evolve.run_iterations(), 0)
 
     def test_workspace_cleanup_on_evaluation_error(self):
-        from src.database import PrimaryTableRow
+        from project_evo.database import PrimaryTableRow
         cfg = SimpleNamespace(db_file="unused", island_count=1, inspiration_count=2, cross_island_inspiration_probability=0.1, evaluation_semaphore=BoundedSemaphore(1), eval_fn=Mock(side_effect=RuntimeError("evaluation failed")))
         parent = PrimaryTableRow("Baseline", "baseline", None, None, None, 1)
         parent.id = 1

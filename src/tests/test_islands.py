@@ -1,8 +1,8 @@
-from src.database import Database, PrimaryTableRow
-from src.error import ConfigError, DatabaseException, KillWorkerException
-from src.task import Task
-from src import config
-from src import evolve
+from project_evo.database import Database, PrimaryTableRow
+from project_evo.error import ConfigError, DatabaseException, KillWorkerException
+from project_evo.task import Task
+from project_evo import config
+from project_evo import evolve
 
 from argparse import Namespace
 from pathlib import Path
@@ -40,7 +40,7 @@ class IslandTests(unittest.TestCase):
         self.assertEqual(self.db.iters_since_last_improvement(1), 0)
         self.assertEqual(self.db.iters_since_last_improvement(3), 0)
         choices = Mock(return_value=[1])
-        with patch.object(config, "cfg", SimpleNamespace(softmax_temp=0.05)), patch("src.database.random.choices", choices):
+        with patch.object(config, "cfg", SimpleNamespace(softmax_temp=0.05)), patch("project_evo.database.random.choices", choices):
             self.assertEqual(self.db.weighted_sample(0).id, local.id)
         self.assertEqual(choices.call_args.args[0], [0, 1, 2, 3])
         self.assertEqual(choices.call_args.args[1][1], 1)
@@ -54,15 +54,15 @@ class IslandTests(unittest.TestCase):
         self.add_attempt(1, 15)
         self.add_attempt(2, 100)
         source = Mock(return_value=(1,))
-        with patch("src.database.random.random", return_value=0), patch("src.database.random.choice", source):
+        with patch("project_evo.database.random.random", return_value=0), patch("project_evo.database.random.choice", source):
             refs = self.db.sample_inspirations(self.baseline, 2, 0, 0.1)
             self.assertEqual([row.id for row in refs], [local.id, elite.id])
             self.assertEqual(source.call_args.args[0], [(1,), (2,)])
             self.assertEqual([row.id for row in self.db.sample_inspirations(self.baseline, 1, 0, 1)], [elite.id])
             self.assertEqual(self.db.sample_inspirations(self.baseline, 0, 0, 1), [])
-        with patch("src.database.random.random", return_value=0.1):
+        with patch("project_evo.database.random.random", return_value=0.1):
             self.assertEqual([row.id for row in self.db.sample_inspirations(self.baseline, 8, 0, 0.1)], [local.id])
-        with patch("src.database.random.random") as draw:
+        with patch("project_evo.database.random.random") as draw:
             self.assertEqual([row.id for row in self.db.sample_inspirations(self.baseline, 8, 0, 0)], [local.id])
             draw.assert_not_called()
 
@@ -102,7 +102,7 @@ class IslandTests(unittest.TestCase):
 
     def test_island_quality_bias_flattens_with_population_imbalance(self):
         choices = Mock(return_value=[0])
-        with patch.object(config, "cfg", SimpleNamespace(softmax_temp=0.05)), patch("src.database.random.choices", choices):
+        with patch.object(config, "cfg", SimpleNamespace(softmax_temp=0.05)), patch("project_evo.database.random.choices", choices):
             self.db.sample_island()
             self.assertEqual(choices.call_args.args[1], [0.25] * 4)
             for island, score in enumerate((20, 10, 10, 10)):

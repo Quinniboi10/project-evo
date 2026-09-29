@@ -1,4 +1,4 @@
-from src.evaluation import EvaluationResult
+from project_evo.evaluation import EvaluationResult
 
 from importlib.machinery import SourceFileLoader
 from pathlib import Path

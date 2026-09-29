@@ -1,10 +1,10 @@
-from src.database import Database, PrimaryTableRow
-from src.task import Task
-from src import config
-from src import git
-from src import evolve
-from src import prompt
-from src import smoke
+from project_evo.database import Database, PrimaryTableRow
+from project_evo.task import Task
+from project_evo import config
+from project_evo import git
+from project_evo import evolve
+from project_evo import prompt
+from project_evo import smoke
 
 from pathlib import Path
 from threading import BoundedSemaphore
@@ -41,7 +41,7 @@ class InspirationSelectionTests(unittest.TestCase):
         for uuid, score in (("best", 20), ("tied", 20), ("variety", 1)):
             self.add_reference(uuid, score)
         sample = Mock(side_effect=lambda candidates, count: candidates[-count:])
-        with patch("src.database.random.sample", sample):
+        with patch("project_evo.database.random.sample", sample):
             references = self.db.sample_inspirations(self.parent, 2, 0, 0)
         self.assertEqual([row.uuid for row in references], ["best", "variety"])
         assert sample.call_args is not None

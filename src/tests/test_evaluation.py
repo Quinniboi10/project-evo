@@ -1,11 +1,11 @@
-from src.database import Database, PrimaryTableRow
-from src.error import EvalError
-from src.evaluation import EvaluationResult, normalize_result, format_feedback
-from src.prompt import build_run_fix_prompt
-from src import config
-from src import evolve
-from src import git
-from src import llm
+from project_evo.database import Database, PrimaryTableRow
+from project_evo.error import EvalError
+from project_evo.evaluation import EvaluationResult, normalize_result, format_feedback
+from project_evo.prompt import build_run_fix_prompt
+from project_evo import config
+from project_evo import evolve
+from project_evo import git
+from project_evo import llm
 
 from importlib.machinery import SourceFileLoader
 from typing import cast
@@ -60,7 +60,7 @@ class EvaluationTests(unittest.TestCase):
 
     def test_external_evaluator_import(self):
         evaluator = self.root / "evaluate.py"
-        evaluator.write_text('from src.evaluation import EvaluationResult\ndef evaluate(workspace):\n    return EvaluationResult(False, 0, "external diagnostic")\n')
+        evaluator.write_text('from project_evo.evaluation import EvaluationResult\ndef evaluate(workspace):\n    return EvaluationResult(False, 0, "external diagnostic")\n')
         module = SourceFileLoader("_test_external_eval", str(evaluator)).load_module()
         self.assertEqual(normalize_result(module.evaluate(self.root)), EvaluationResult(False, 0, "external diagnostic"))
 

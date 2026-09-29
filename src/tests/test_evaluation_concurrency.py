@@ -1,7 +1,7 @@
-from src.error import ConfigError, EvalError
-from src.evaluation import EvaluationResult
-from src import config
-from src import evolve
+from project_evo.error import ConfigError, EvalError
+from project_evo.evaluation import EvaluationResult
+from project_evo import config
+from project_evo import evolve
 
 from argparse import Namespace
 from concurrent.futures import ThreadPoolExecutor

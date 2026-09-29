@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const http = require("node:http");
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
-const root = path.resolve(__dirname, "..");
+const root = path.resolve(__dirname, "../project_evo");
 
 function fixture(count = 80, islands = 4) {
     const graph = { islands: Array.from({ length: islands }, (_, id) => id), nodes: [], edges: [] };

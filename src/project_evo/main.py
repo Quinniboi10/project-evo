@@ -3,6 +3,8 @@ from . import evolve as evolution
 from . import dashboard
 from . import visualize
 
+from pathlib import Path
+
 import argparse
 
 def build_parser() -> argparse.ArgumentParser:
@@ -12,11 +14,22 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("run", parents=[evolution.build_parser(add_help=False)], help="Evolve a repository or run a smoke simulation")
     commands.add_parser("dashboard", parents=[dashboard.build_parser(add_help=False)], help="Serve the lineage dashboard")
     commands.add_parser("visualize", parents=[visualize.build_parser(add_help=False)], help="Export a lineage graph")
+    init = commands.add_parser("init", help="Create an editable configuration file")
+    init.add_argument("path", type=Path, nargs="?", default=Path("config.toml"), help="Destination file (default: config.toml)")
     return parser
 
 def main(argv: list[str]|None=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.command == "init":
+        template = (Path(__file__).resolve().parent / "configs" / "default.toml").read_text(encoding="utf-8")
+        try:
+            with args.path.open("x", encoding="utf-8") as file:
+                file.write(template)
+        except OSError as error:
+            parser.error(f"Cannot create {args.path}: {error.strerror}")
+        print(f"Created: {args.path.resolve()}")
+        return 0
     if args.command == "run":
         return evolution.execute(args, parser)
     if args.command == "dashboard":

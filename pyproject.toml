@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "project-evo"
+description = "MCTS-inspired automated evolution of codebases"
+readme = "README.md"
+requires-python = ">=3.14"
+keywords = ["autoevolution", "llm", "metaharness", "evolution", "codex"]
+authors = [{ name = "Quinniboi10" }]
+dynamic = ["version", "dependencies"]
+
+[project.scripts]
+project-evo = "project_evo.main:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["project_evo"]
+include-package-data = false
+
+[tool.setuptools.package-data]
+project_evo = ["configs/*.json", "configs/*.toml", "dashboard/*", "dashboard/fonts/*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "project_evo.version.__version__"}
+dependencies = {file = ["requirements.txt"]}

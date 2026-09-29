@@ -1,6 +1,6 @@
 # Runs a single command and rewards lower time per run across N runs
 
-from src.evaluation import EvaluationResult
+from project_evo.evaluation import EvaluationResult
 
 from pathlib import Path
 import subprocess

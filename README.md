@@ -10,20 +10,20 @@ This project is inspired by [Chaos](https://github.com/Quinniboi10/Chaos), a hig
 ### Quickstart
 Install the following:  
 At least Python 3.14, OpenAI Codex 0.155.1 or OpenCode 2.0.11  
-Then run `pip3 install -r requirements.txt`
+Then run `python3 -m pip install -e .` from the checkout.
 
 That's it! Check out the [usage](README.md#usage) to see how things are put together, or take a look at some of the [example scripts](README.md#examples)
 
 ### Usage
-From the repository root, use `python3 -m src.main -h` for the unified CLI:
+From the repository root, use `python3 -m project_evo.main -h` for the unified CLI:
 
 ```bash
-python3 -m src.main run PROJECT EVALUATOR --objective "Improve throughput" -i 20
-python3 -m src.main dashboard --db RUN.db
-python3 -m src.main visualize --db RUN.db --format svg
+python3 -m project_evo.main run PROJECT EVALUATOR --objective "Improve throughput" -i 20
+python3 -m project_evo.main dashboard --db RUN.db
+python3 -m project_evo.main visualize --db RUN.db --format svg
 ```
 
-Run `python3 -m src.main run -h` for evolution options. The individual commands remain available through `python3 -m src.evolve`, `python3 -m src.dashboard` and `python3 -m src.visualize`.
+Run `python3 -m project_evo.main run -h` for evolution options. The individual commands remain available through `python3 -m project_evo.evolve`, `python3 -m project_evo.dashboard` and `python3 -m project_evo.visualize`.
 
 Arguments
 - `project_path` - the path to the project to be optimized. This path should be the base of a git repository (required for proper function of workspaces)
@@ -40,7 +40,7 @@ Arguments
 \*The eval_file argument must supply a file that implements the below function signature  
 `evaluate(path: Path) -> EvaluationResult | tuple[bool, float]`
 
-Import `EvaluationResult` from `src.evaluation` and return `EvaluationResult(passed, score, feedback="")`, or keep returning `(passed, score)`. `passed` means acceptance checks passed, not necessarily improvement over the parent. Passing scores must be finite and greater than zero; failed scores are ignored. Optional text feedback goes to the next repair or baseline failure error, bounded to its first and last 4,000 characters when longer than 8,000. Evaluator exceptions still propagate.
+Import `EvaluationResult` from `project_evo.evaluation` and return `EvaluationResult(passed, score, feedback="")`, or keep returning `(passed, score)`. `passed` means acceptance checks passed, not necessarily improvement over the parent. Passing scores must be finite and greater than zero; failed scores are ignored. Optional text feedback goes to the next repair or baseline failure error, bounded to its first and last 4,000 characters when longer than 8,000. Evaluator exceptions still propagate.
 
 ***EVALUATE SHOULD BE NONDESTRICTUVE AS IT WILL BE CALLED ON THE PROJECT ROOT DIRECTORY TO ESTABLISH A BASELINE***
 
@@ -51,6 +51,14 @@ Set `[general].evaluation_concurrency` to limit simultaneous evaluator calls (th
 With Python 3.14+, run `python3 -m pip install -r requirements-build.txt`, then `python3 src/makebin.py`. This uses [PyInstaller](https://pyinstaller.org/en/stable/) to bundle Python, project libraries, dashboard assets and sandbox files into `dist/project-evo` (`.exe` on Windows). Build on each target OS/architecture.
 
 Run `./project-evo -h` from `dist/`; an editable `config.toml` is copied alongside the executable without overwriting existing settings. From another directory, pass `run -c PATH/config.toml`. Use `--output-dir PATH` to change the build destination. For evaluator-specific Python dependencies, install them in the build environment and repeat `--collect-all PACKAGE` as needed. Git, Codex/OpenCode, Graphviz's `dot` renderer and evaluator-specific external tools must still be installed separately.
+
+### Wheel installation
+
+Build with `python3 -m pip install build` and `python3 -m build`. Install with `python3 -m pip install dist/project_evo-1.11.0-py3-none-any.whl`, then use `project-evo -h` from any directory. Python 3.14+ and the external tools listed above are still required.
+
+Run `project-evo init [PATH]` to create an editable config (default: `./config.toml`); existing files are never overwritten. Review providers and models before running. Use `project-evo run -c PATH ...` for a config elsewhere.
+
+Version 1.11.0 changes imports from `src` to `project_evo`: evaluators should use `from project_evo.evaluation import EvaluationResult`; module commands use `python3 -m project_evo.main`. For checkout development and tests, install with `python3 -m pip install -e .` first.
 
 ### Exploration and inspiration
 
@@ -66,11 +74,11 @@ Each attempt starts from one "parent" workspace. Exploration (30%) tries alterna
 
 ### Dashboard
 
-Run `python3 -m src.main dashboard --db PATH` to open the lineage workbench. Filter populations, replay the global history, or explore the overall tree as it grows.
+Run `python3 -m project_evo.main dashboard --db PATH` to open the lineage workbench. Filter populations, replay the global history, or explore the overall tree as it grows.
 
 ### Smoke runs
 
-Run `python3 -m src.main run --smoke -i 12 --debug` to check worktrees, commits, database storage, routing and logging without querying LLMs. Requires Git.
+Run `python3 -m project_evo.main run --smoke -i 12 --debug` to check worktrees, commits, database storage, routing and logging without querying LLMs. Requires Git.
 
 - Uses a synthetic project and evaluator; supplied project/evaluator paths are ignored, and the objective is optional
 - Keeps your config and run flags; `--db` and `--logfile` use only their filenames inside the temporary directory

@@ -1,0 +1,45 @@
+[general]
+temperature = 0.05 # Softmax temperature to use when selecting what to explore
+concurrency = 5    # Number of concurrent threads to run
+evaluation_concurrency = 1 # Maximum simultaneous evaluator calls; defaults to concurrency if omitted
+inspiration_count = 2 # Maximum reference attempts per prompt; 0 disables inspiration
+island_count = 4 # Independent populations sharing the worker pool; fixed when resuming
+cross_island_inspiration_probability = 0.1 # Chance of reserving one reference for a foreign elite
+
+max_fix_attempts = 3     # Maximum number of times to allow the LLM to try to fix a workspace
+llm_timeout_sec  = 10800 # Maximum time to wait before killing the LLM
+
+[git]
+branch_base = "project-evo"   # Git branches will be {base}/{uuid}
+workspace_base = "workspaces" # Git workspaces will be {project root}/{base}/{uuid}
+
+[providers.astra]
+adapter = "codex"
+model = "gpt-6-astra"
+max_concurrency = 5
+
+[providers.sol]
+adapter = "codex"
+model = "gpt-5.6-sol"
+max_concurrency = 5
+
+[providers.qwen]
+adapter = "codex"
+model = "Qwen3.8-27B-Dense"
+extra_args = ["--profile", "qwen38-dense"] # Optional extra arguments to pass to the harness
+max_concurrency = 1
+
+[providers.muse]
+adapter = "opencode"
+model = "opencode/muse-spark-1.3-contributor-free"
+max_concurrency = 3
+
+[providers.ling-flash]
+adapter = "opencode"
+model = "opencode/ling-3.0-flash-fin-free"
+max_concurrency = 3
+
+[routing]
+exploration = "ling-flash"
+improvement = "muse"
+fallback    = "sol"

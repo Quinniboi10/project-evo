@@ -30,7 +30,7 @@ def build_parser(add_help: bool=True) -> argparse.ArgumentParser:
   Evaluator:
       The eval_file argument must supply a file that implements the below function signature
       evaluate(path: Path) -> EvaluationResult | tuple[bool, float]
-      Import EvaluationResult from src.evaluation; return EvaluationResult(passed, score, feedback="").
+      Import EvaluationResult from project_evo.evaluation; return EvaluationResult(passed, score, feedback="").
       passed means acceptance checks passed; passing scores must be finite and greater than 0.
       Optional feedback supplies diagnostics to repairs and baseline failure errors.
       *** EVALUATE SHOULD BE NONDESTRICTUVE AS IT WILL BE CALLED ON THE ROOT DIRECTORY ***
