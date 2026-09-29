@@ -1,6 +1,7 @@
 # Python stuff
 __pycache__/
 .venv/
+dist/
 
 # Experiments and stuff
 playground/

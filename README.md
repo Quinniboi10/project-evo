@@ -46,6 +46,12 @@ Import `EvaluationResult` from `src.evaluation` and return `EvaluationResult(pas
 
 Set `[general].evaluation_concurrency` to limit simultaneous evaluator calls (the supplied config uses `1`; omitted values default to `concurrency`). Waiting evaluations occupy worker slots. This limit applies within one Evo process; agent commands and other processes can still compete for resources. Repeated measurements and aggregation belong in your evaluator.
 
+### Building binaries from source
+
+With Python 3.14+, run `python3 -m pip install -r requirements-build.txt`, then `python3 src/makebin.py`. This uses [PyInstaller](https://pyinstaller.org/en/stable/) to bundle Python, project libraries, dashboard assets and sandbox files into `dist/project-evo` (`.exe` on Windows). Build on each target OS/architecture.
+
+Run `./project-evo -h` from `dist/`; an editable `config.toml` is copied alongside the executable without overwriting existing settings. From another directory, pass `run -c PATH/config.toml`. Use `--output-dir PATH` to change the build destination. For evaluator-specific Python dependencies, install them in the build environment and repeat `--collect-all PACKAGE` as needed. Git, Codex/OpenCode, Graphviz's `dot` renderer and evaluator-specific external tools must still be installed separately.
+
 ### Exploration and inspiration
 
 Each attempt starts from one "parent" workspace. Exploration (30%) tries alternative approaches; improvement refines the current implementation.
