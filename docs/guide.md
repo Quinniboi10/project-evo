@@ -29,7 +29,7 @@ For evaluator dependencies, add `--with PACKAGE` to the uv install command, or i
 
 **Evaluators must be nondestructive: they also run on the project root to establish the baseline.**
 
-Set `[general].evaluation_concurrency` to limit simultaneous evaluator calls (the supplied config uses `1`; omitted values default to `concurrency`). Waiting evaluations occupy worker slots. This limit applies within one Evo process; agent commands and other processes can still compete for resources. Repeated measurements and aggregation belong in your evaluator.
+Set `[general].evaluation_concurrency` to limit simultaneous evaluator calls (the supplied config uses `1`; omitted values default to `concurrency`). Waiting evaluations occupy worker slots. This limit applies within one Evo process; agent commands and other processes can still compete for resources. Within-call repetitions belong in your evaluator; optional idle re-evaluation averages successive calls.
 
 ## Building binaries from source
 
@@ -54,6 +54,20 @@ Each attempt starts from one "parent" workspace. Exploration (30%) tries alterna
 - `cross_island_inspiration_probability` defaults to `0.1`: occasionally one reference slot uses another island's best non-baseline attempt. Set `0` for fully local inspiration.
 - Island count is fixed when resuming a database; sharing probability may change. Database schema versions are independent of application versions. Older, newer, or unversioned schemas warn and attempt normal operations; compatibility is not guaranteed and no automatic migration occurs. Use a matching application version or start a new database if incompatible.
 - Scores and diffs are included directly in prompts, so agents need no Git access. Each attempt retains one parent.
+
+## Idle re-evaluation
+
+Set `[general].reevaluate_idle = true` to recheck saved attempts while evolution runs.
+Queued candidate and repair checks take priority; an already-running recheck finishes.
+The least-measured attempts (including the baseline) are selected, with random ties.
+Each successful evaluator call contributes equally to the running mean `score` and
+increments `evaluation_count`; internal benchmark repetitions are not counted separately.
+Recheck failures raise `EvalError`. With `--gnhf`, the revision is skipped until restart;
+otherwise the run stops. Failed checks leave its score and count unchanged.
+
+This requires schema 2, which adds `evaluation_count` (initially 1). There is no automatic
+migration. Background work stops with evolution. Timing evaluators still need stable
+conditions; idle slots do not isolate them from agent builds or power-mode changes.
 
 ## Dashboard
 

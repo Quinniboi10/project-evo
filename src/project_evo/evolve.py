@@ -2,6 +2,7 @@ from .error import assert_config, assert_eval, KillWorkerException
 from .prompt import build_prompt, build_run_fix_prompt, build_inspiration_context
 from .database import Database, PrimaryTableRow
 from .evaluation import EvaluationResult, normalize_result, format_feedback
+from .reevaluation import IdleEvaluator
 from .task import Task
 from .version import version_string
 from . import config
@@ -20,6 +21,7 @@ import random
 from tqdm import tqdm
 
 random.seed(42)
+_idle_evaluator: IdleEvaluator|None = None
 
 def build_parser(add_help: bool=True) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -59,6 +61,8 @@ def check_requirements():
         assert_config(which(adapter) is not None, f"The current configuration expects the command '{adapter}' but it cannot be found")
 
 def _evaluate(workspace: Path) -> EvaluationResult:
+    if _idle_evaluator is not None:
+        return _idle_evaluator.evaluate(workspace)
     with config.cfg.evaluation_semaphore:
         return normalize_result(config.cfg.eval_fn(workspace))
 
@@ -121,18 +125,26 @@ def select_island() -> int:
         return db.sample_island()
 
 def run_iterations() -> int:
+    global _idle_evaluator
     pool = ThreadPoolExecutor(max_workers=config.cfg.concurrency)
     pending_workers: dict[Future[None], int] = {}
     iterations_to_submit = config.cfg.iterations
 
     try:
+        if getattr(config.cfg, "reevaluate_idle", False) and iterations_to_submit > 0:
+            _idle_evaluator = IdleEvaluator()
         with tqdm(total=config.cfg.iterations) as pbar:
             while iterations_to_submit > 0 or pending_workers:
                 while iterations_to_submit > 0 and len(pending_workers) < config.cfg.concurrency:
                     island_id = select_island()
                     pending_workers[pool.submit(run_worker, island_id)] = island_id
                     iterations_to_submit -= 1
-                done, _ = wait(pending_workers, return_when="FIRST_COMPLETED")
+                watched = list(pending_workers)
+                if _idle_evaluator is not None:
+                    watched.append(_idle_evaluator.failure)
+                done, _ = wait(watched, return_when="FIRST_COMPLETED")
+                if _idle_evaluator is not None and _idle_evaluator.failure in done:
+                    _idle_evaluator.failure.result()
 
                 for future in done:
                     island_id = pending_workers.pop(future)
@@ -145,6 +157,10 @@ def run_iterations() -> int:
                         pending_workers[pool.submit(run_worker, island_id)] = island_id # Keep replacements on the same island
                     else:
                         pbar.update(1)
+        if _idle_evaluator is not None:
+            _idle_evaluator.close()
+            if _idle_evaluator.failure.done():
+                _idle_evaluator.failure.result()
     except (Exception, KeyboardInterrupt) as e:
         if isinstance(e, KeyboardInterrupt):
             print("\nCaught keyboard interrupt. Exiting...")
@@ -154,7 +170,14 @@ def run_iterations() -> int:
         logging.log(logging.WARNING, "Cancelling future threads and waiting for pool shutdown")
         return 0 if isinstance(e, KeyboardInterrupt) else 1
     finally:
-        pool.shutdown(wait=True, cancel_futures=True)
+        if _idle_evaluator is not None:
+            _idle_evaluator.stop()
+        try:
+            pool.shutdown(wait=True, cancel_futures=True)
+        finally:
+            if _idle_evaluator is not None:
+                _idle_evaluator.close()
+                _idle_evaluator = None
     return 0
 
 def run(args: argparse.Namespace) -> int:

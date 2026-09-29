@@ -15,7 +15,7 @@ import logging
 import random
 import math
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 _warned_versions: set[tuple[str, str]] = set()
 _warning_lock = Lock()
 
@@ -71,6 +71,7 @@ class PrimaryTableRow():
         self.score = score
         self.island_id: int|None = None
         self.reference_ids: list[int]|None = None
+        self.evaluation_count = 1
 
     @classmethod
     def create_new_child(cls, parent: PrimaryTableRow, task: Task) -> Self:
@@ -83,7 +84,7 @@ class PrimaryTableRow():
 
 class Database():
     PRIMARY_TABLE = "evolve"
-    COLUMNS = "id, name, uuid, model, task, parent_id, score, island_id, reference_ids"
+    COLUMNS = "id, name, uuid, model, task, parent_id, score, island_id, reference_ids, evaluation_count"
 
     def __init__(self, file: str|Path, require_exist: bool=False, *, island_count: int|None=None):
         memory = str(file) == ":memory:"
@@ -127,6 +128,7 @@ class Database():
                 score REAL NOT NULL,
                 island_id INTEGER,
                 reference_ids TEXT,
+                evaluation_count INTEGER NOT NULL DEFAULT 1 CHECK (evaluation_count >= 1),
                 CHECK ((parent_id IS NULL AND island_id IS NULL) OR
                        (parent_id IS NOT NULL AND island_id IS NOT NULL AND island_id >= 0))
             )""")
@@ -139,12 +141,13 @@ class Database():
         assert_db(read_island_count(self.db) == island_count, "Configured island_count must match the database island count")
 
     def _read_row(self, values: tuple) -> PrimaryTableRow:
-        attempt_id, name, uuid, model, task, parent_id, score, island_id, references = values
+        attempt_id, name, uuid, model, task, parent_id, score, island_id, references, evaluation_count = values
         row = PrimaryTableRow(name, uuid, model, None, parent_id, score)
         row.id = attempt_id
         row.task = task
         row.island_id = island_id
         row.reference_ids = decode_references(references)
+        row.evaluation_count = evaluation_count
         return row
 
     def _insert_row(self, row: PrimaryTableRow, island_id: int|None, reference_ids: list[int]|None) -> int:
@@ -181,6 +184,21 @@ class Database():
     def select(self, cmd: str):
         with database_errors():
             return self.cursor.execute(cmd).fetchall()
+
+    def sample_reevaluation(self, excluded: set[int]) -> PrimaryTableRow|None:
+        with database_errors():
+            placeholders = ", ".join("?" for _ in excluded)
+            where = f"WHERE id NOT IN ({placeholders})" if excluded else ""
+            match = self.cursor.execute(f"SELECT {self.COLUMNS} FROM evolve {where} ORDER BY evaluation_count, RANDOM() LIMIT 1", tuple(excluded)).fetchone()
+            return self._read_row(match) if match is not None else None
+
+    def record_evaluation(self, attempt_id: int, score: float) -> tuple[float, int]:
+        with database_errors(), self.db:
+            match = self.cursor.execute("""UPDATE evolve
+                SET score = score + (? - score) / (evaluation_count + 1), evaluation_count = evaluation_count + 1
+                WHERE id = ? RETURNING score, evaluation_count""", (score, attempt_id)).fetchone()
+            assert_db(match is not None, f"Unknown attempt {attempt_id}")
+            return match[0], match[1]
 
     def iters_since_last_improvement(self, island_id: int) -> int:
         with database_errors():

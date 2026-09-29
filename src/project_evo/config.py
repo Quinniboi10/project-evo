@@ -14,6 +14,8 @@ import tomllib
 import time
 
 class Config:
+    reevaluate_idle: bool = False
+
     def __init__(self, args: Namespace):
         with open(args.config, "rb") as f:
             self.config = tomllib.load(f)
@@ -36,6 +38,7 @@ class Config:
         self.evaluation_semaphore = BoundedSemaphore(self.evaluation_concurrency)
 
     def _validate(self):
+        assert_config(type(self.reevaluate_idle) is bool, "general.reevaluate_idle must be a boolean")
         assert_config(type(self.evaluation_concurrency) is int and self.evaluation_concurrency > 0, "general.evaluation_concurrency must be a positive integer")
         assert_config(self.softmax_temp > 0, "Softmax temperature must be greater than 0")
         assert_config(len(self.objective) > 0, "Objective does not exist")
@@ -78,6 +81,7 @@ class Config:
         self.softmax_temp     = float(self.config["general"]["temperature"])
         self.concurrency      = int(self.config["general"]["concurrency"])
         self.evaluation_concurrency = self.config["general"].get("evaluation_concurrency", self.concurrency)
+        self.reevaluate_idle = self.config["general"].get("reevaluate_idle", False)
         self.max_fix_attempts = int(self.config["general"]["max_fix_attempts"])
         self.llm_timeout_sec  = int(self.config["general"]["llm_timeout_sec"])
         self.inspiration_count = self.config["general"].get("inspiration_count")

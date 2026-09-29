@@ -2,6 +2,8 @@ from .error import KillWorkerException, KillPoolException
 from .database import PrimaryTableRow
 from . import config
 
+from contextlib import contextmanager
+from uuid import uuid7
 from threading import Lock
 from pathlib import Path
 
@@ -64,6 +66,18 @@ def create_new_workspace(parent: PrimaryTableRow, child: PrimaryTableRow) -> Pat
     exec_in_workspace(config.cfg.project_root, f"git worktree add -b \"{branch}\" \"{path}\" \"{parent_br}\"")
 
     return (config.cfg.project_root / path).resolve(strict=True)
+
+@contextmanager
+def evaluation_workspace(row: PrimaryTableRow):
+    path = config.cfg.project_root / config.cfg.workspace_base / f"reevaluate-{uuid7().hex}"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with workspace_locks.setdefault(config.cfg.project_root, Lock()):
+        subprocess.run(["git", "worktree", "add", "--detach", str(path), f"refs/heads/{config.cfg.branch_base}/{row.uuid}"],
+                       cwd=config.cfg.project_root, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+        yield path
+    finally:
+        delete_workspace(path)
 
 def delete_workspace(workspace: Path):
     exec_in_workspace(config.cfg.project_root, f"git worktree remove --force \"{str(workspace)}\"")

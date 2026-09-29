@@ -31,6 +31,14 @@ class EvaluationConcurrencyTests(unittest.TestCase):
                             cfg = config.Config(args)
                             expected = 5 if value is None else int(value)
                             self.assertEqual(cfg.evaluation_concurrency, expected)
+                            self.assertFalse(cfg.reevaluate_idle)
+                            for idle in (True, False, 1, 0, "true", None):
+                                setattr(cfg, "reevaluate_idle", idle)
+                                if type(idle) is bool:
+                                    cfg._validate()
+                                else:
+                                    with self.assertRaisesRegex(ConfigError, "reevaluate_idle must be a boolean"):
+                                        cfg._validate()
                             for _ in range(expected):
                                 self.assertTrue(cfg.evaluation_semaphore.acquire(blocking=False))
                             self.assertFalse(cfg.evaluation_semaphore.acquire(blocking=False))
