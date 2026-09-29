@@ -14,9 +14,9 @@ import os
 router_lock = Lock()
 running_processes: dict[str, int] = {}
 
-env = os.environ.copy()
-env["OPENCODE_CONFIG"] = str((Path(__file__).resolve().parent.parent / "configs" / "opencode-sandbox.json").resolve(strict=True))
-env["OPENCODE_SANDBOX_CONFIG"] = (Path(__file__).resolve().parent.parent / "configs" / "opencode-sandbox-policy.json").resolve(strict=True).read_text()
+opencode_env = os.environ.copy()
+opencode_env["OPENCODE_CONFIG"] = str((Path(__file__).resolve().parent.parent / "configs" / "opencode-sandbox.json").resolve(strict=True))
+opencode_env["OPENCODE_SANDBOX_CONFIG"] = (Path(__file__).resolve().parent.parent / "configs" / "opencode-sandbox-policy.json").resolve(strict=True).read_text()
 
 def _codex(workspace: Path, model_name: str, prompt: str, extra_args: list[str]):
     return subprocess.run(
@@ -27,10 +27,10 @@ def _codex(workspace: Path, model_name: str, prompt: str, extra_args: list[str])
 def _opencode(workspace: Path, model_name: str, prompt: str, extra_args: list[str]):
     return subprocess.run(
         ["opencode", "run", "--standalone", "--model", model_name] + extra_args,
-        input=prompt, text=True, capture_output=True, cwd=workspace, timeout=config.cfg.llm_timeout_sec, env=env
+        input=prompt, text=True, capture_output=True, cwd=workspace, timeout=config.cfg.llm_timeout_sec, env=opencode_env
     )
 
-def route_prompt(workspace: Path, prompt: str, task: Task) -> str:
+def run_agent(workspace: Path, prompt: str, task: Task) -> str:
     # Needs to be locked so multiple workers can't add the same thing multiple times when run in parallel (like startup)
     with router_lock:
         if task == Task.EXPLORE:

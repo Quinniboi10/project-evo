@@ -22,16 +22,20 @@ class Config:
         logging.basicConfig(filename=args.logfile, level=logging.DEBUG if args.debug else logging.INFO)
 
         if args.objective is not None:
-            self._objective_str: str = args.objective
+            self.objective: str = args.objective
         else:
             with open(args.objective_file) as f:
-                self._objective_str = f.read()
+                self.objective = f.read()
 
         self._set_attributes()
-        self._sanitize_inputs()
+        self._validate()
+        if self.args.smoke:
+            self.args.smoke_session.validate(self)
+        else:
+            self._confirm_providers()
         self.evaluation_semaphore = BoundedSemaphore(self.evaluation_concurrency)
 
-    def _sanitize_inputs(self):
+    def _validate(self):
         assert_config(type(self.evaluation_concurrency) is int and self.evaluation_concurrency > 0, "general.evaluation_concurrency must be a positive integer")
         assert_config(self.softmax_temp > 0, "Softmax temperature must be greater than 0")
         assert_config(len(self.objective) > 0, "Objective does not exist")
@@ -47,10 +51,7 @@ class Config:
         assert_config(max_concurrency >= self.concurrency, f"Config asks for concurrency of {self.concurrency} but all listed providers only supply {max_concurrency}")
         assert_config(self.max_concurrency(self.fallback_model) >= self.concurrency, f"Fallback model must be able to handle {max_concurrency} concurrent sessions")
 
-        if self.args.smoke:
-            self.args.smoke_session.validate(self)
-            return
-
+    def _confirm_providers(self):
         for job, model in self._routing.items():
             if self.model_full_name(model).startswith("opencode/"):
                 logging.log(logging.WARNING, f"{model} is routing through opencode's free model library. Ensuring user is OK with data collection.")
@@ -69,7 +70,6 @@ class Config:
     def _set_attributes(self):
         self.project_root                                  = Path(self.args.project_path).resolve(strict=True)
         self.eval_fn: Callable[[Path], EvaluationResult|tuple[bool, float]] = SourceFileLoader("_workspace_eval_module", self.args.eval_file).load_module().evaluate
-        self.objective                                     = self._objective_str
         self.iterations                                    = self.args.iterations
         self.db_file                                       = Path(self.args.db if self.args.db is not None else f"./playground/databases/{round(time.time())}.db")
 

@@ -113,7 +113,7 @@ class EvaluationTests(unittest.TestCase):
                 cleanup = Mock()
                 workspace = self.root / "workspace"
                 cfg = SimpleNamespace(db_file=path, island_count=1, inspiration_count=0, cross_island_inspiration_probability=0, softmax_temp=0.05, eval_fn=evaluate, evaluation_semaphore=BoundedSemaphore(1), max_fix_attempts=2, objective="Faster", branch_base="evo")
-                with patch.object(config, "cfg", cfg), patch.object(git, "create_new_workspace", return_value=workspace), patch.object(git, "delete_workspace", cleanup), patch.object(llm, "route_prompt", route), patch.object(llm, "get_attempt_name", return_value="Attempt"):
+                with patch.object(config, "cfg", cfg), patch.object(git, "create_new_workspace", return_value=workspace), patch.object(git, "delete_workspace", cleanup), patch.object(llm, "run_agent", route), patch.object(llm, "get_attempt_name", return_value="Attempt"):
                     if isinstance(outcome, RuntimeError):
                         with self.assertRaisesRegex(RuntimeError, "evaluator broke"):
                             evolve.run_worker(0)
@@ -161,7 +161,7 @@ class EvaluationTests(unittest.TestCase):
                     cleanup = Mock()
                     workspace = self.root / "workspace"
                     cfg = SimpleNamespace(db_file=path, island_count=1, inspiration_count=0, cross_island_inspiration_probability=0, softmax_temp=0.05, eval_fn=evaluate, evaluation_semaphore=BoundedSemaphore(1), max_fix_attempts=1, objective="Faster", branch_base="evo")
-                    with patch.object(config, "cfg", cfg), patch.object(git, "create_new_workspace", return_value=workspace), patch.object(git, "delete_workspace", cleanup), patch.object(llm, "route_prompt", route):
+                    with patch.object(config, "cfg", cfg), patch.object(git, "create_new_workspace", return_value=workspace), patch.object(git, "delete_workspace", cleanup), patch.object(llm, "run_agent", route):
                         with self.assertRaises(EvalError):
                             evolve.run_worker(0)
                     self.assertEqual(evaluate.call_count, len(results))

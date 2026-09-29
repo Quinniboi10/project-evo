@@ -8,7 +8,7 @@ from . import config
 from . import git
 from . import llm
 
-from concurrent.futures import ThreadPoolExecutor, wait
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from uuid import uuid7
 from contextlib import closing
 from pathlib import Path
@@ -93,7 +93,7 @@ def run_worker(island_id: int):
             logging.log(logging.INFO, f"Island {island_id} attempt {child.uuid}, parent {parent.uuid}, inspirations {[row.uuid for row in references]}")
             inspirations, reference_ids = build_inspiration_context(parent, references)
             prompt = build_prompt(parent, child, inspirations)
-            child.model = llm.route_prompt(workspace, prompt, task)
+            child.model = llm.run_agent(workspace, prompt, task)
 
             result = _evaluate(workspace)
             fixes = 0
@@ -101,7 +101,7 @@ def run_worker(island_id: int):
                 fixes += 1
                 logging.log(logging.INFO, f"Run UUID {child.uuid} failed verification, retrying ({fixes}/{config.cfg.max_fix_attempts})")
                 prompt = build_run_fix_prompt(parent, child, result.feedback)
-                llm.route_prompt(workspace, prompt, task)
+                llm.run_agent(workspace, prompt, task)
                 result = _evaluate(workspace)
 
             if not result.passed:
@@ -122,27 +122,27 @@ def select_island() -> int:
 
 def run_iterations() -> int:
     pool = ThreadPoolExecutor(max_workers=config.cfg.concurrency)
-    pending = {}
-    remaining = config.cfg.iterations
+    pending_workers: dict[Future[None], int] = {}
+    iterations_to_submit = config.cfg.iterations
 
     try:
         with tqdm(total=config.cfg.iterations) as pbar:
-            while remaining > 0 or pending:
-                while remaining > 0 and len(pending) < config.cfg.concurrency:
+            while iterations_to_submit > 0 or pending_workers:
+                while iterations_to_submit > 0 and len(pending_workers) < config.cfg.concurrency:
                     island_id = select_island()
-                    pending[pool.submit(run_worker, island_id)] = island_id
-                    remaining -= 1
-                done, _ = wait(pending, return_when="FIRST_COMPLETED")
+                    pending_workers[pool.submit(run_worker, island_id)] = island_id
+                    iterations_to_submit -= 1
+                done, _ = wait(pending_workers, return_when="FIRST_COMPLETED")
 
                 for future in done:
-                    island_id = pending.pop(future)
+                    island_id = pending_workers.pop(future)
                     try:
                         future.result()
                     except KillWorkerException as e:
                         if not config.cfg.gnhf:
                             raise
                         logging.log(logging.ERROR, f"A worker raised {type(e)}. {e}")
-                        pending[pool.submit(run_worker, island_id)] = island_id # Keep replacements on the same island
+                        pending_workers[pool.submit(run_worker, island_id)] = island_id # Keep replacements on the same island
                     else:
                         pbar.update(1)
     except (Exception, KeyboardInterrupt) as e:

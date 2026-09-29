@@ -146,11 +146,11 @@ class IslandConfigTests(unittest.TestCase):
         cfg.args = Namespace(smoke=True, smoke_session=SimpleNamespace(validate=validate))
         for count, probability in ((4, 0.1), (1, 0), (8, 1)):
             cfg.island_count, cfg.cross_island_inspiration_probability = count, probability
-            cfg._sanitize_inputs()
+            cfg._validate()
         for count, probability in ((0, 0.1), (-1, 0.1), (True, 0.1), (1.5, 0.1), (4, True), (4, -0.1), (4, 1.1), (4, float("nan")), (4, float("inf")), (4, "0.1")):
             cfg.island_count, cfg.cross_island_inspiration_probability = count, probability
             with self.subTest(count=count, probability=probability), self.assertRaisesRegex(ConfigError, "general\\."):
-                cfg._sanitize_inputs()
+                cfg._validate()
 
 if __name__ == "__main__":
     unittest.main()

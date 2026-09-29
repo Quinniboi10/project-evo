@@ -139,9 +139,12 @@ class Database():
         assert_db(read_island_count(self.db) == island_count, "Configured island_count must match the database island count")
 
     def _read_row(self, values: tuple) -> PrimaryTableRow:
-        row = PrimaryTableRow(values[1], values[2], values[3], None, values[5], values[6])
-        row.id, row.task, row.island_id = values[0], values[4], values[7]
-        row.reference_ids = decode_references(values[8])
+        attempt_id, name, uuid, model, task, parent_id, score, island_id, references = values
+        row = PrimaryTableRow(name, uuid, model, None, parent_id, score)
+        row.id = attempt_id
+        row.task = task
+        row.island_id = island_id
+        row.reference_ids = decode_references(references)
         return row
 
     def _insert_row(self, row: PrimaryTableRow, island_id: int|None, reference_ids: list[int]|None) -> int:
@@ -191,39 +194,43 @@ class Database():
             if limit <= 0:
                 return []
 
-            matches = self.cursor.execute(f"SELECT {self.COLUMNS} FROM {self.PRIMARY_TABLE} WHERE (island_id = ? OR island_id IS NULL) AND id != ? ORDER BY score DESC, id ASC", (island_id, parent.id)).fetchall()
+            local_candidates = self.cursor.execute(f"SELECT {self.COLUMNS} FROM {self.PRIMARY_TABLE} WHERE (island_id = ? OR island_id IS NULL) AND id != ? ORDER BY score DESC, id ASC", (island_id, parent.id)).fetchall()
             foreign = []
             if cross_probability > 0 and random.random() < cross_probability:
-                sources = self.cursor.execute(f"SELECT DISTINCT island_id FROM {self.PRIMARY_TABLE} WHERE island_id != ? AND parent_id IS NOT NULL AND id != ? ORDER BY island_id", (island_id, parent.id)).fetchall()
-                if sources:
-                    source = random.choice(sources)[0]
-                    foreign = self.cursor.execute(f"SELECT {self.COLUMNS} FROM {self.PRIMARY_TABLE} WHERE island_id = ? AND parent_id IS NOT NULL AND id != ? ORDER BY score DESC, id ASC LIMIT 1", (source, parent.id)).fetchall()
-                    logging.log(logging.INFO, f"Island {island_id} foreign inspiration {foreign[0][2]} from island {source}")
+                foreign_islands = self.cursor.execute(f"SELECT DISTINCT island_id FROM {self.PRIMARY_TABLE} WHERE island_id != ? AND parent_id IS NOT NULL AND id != ? ORDER BY island_id", (island_id, parent.id)).fetchall()
+                if foreign_islands:
+                    source_island = random.choice(foreign_islands)[0]
+                    foreign = self.cursor.execute(f"SELECT {self.COLUMNS} FROM {self.PRIMARY_TABLE} WHERE island_id = ? AND parent_id IS NOT NULL AND id != ? ORDER BY score DESC, id ASC LIMIT 1", (source_island, parent.id)).fetchall()
+                    logging.log(logging.INFO, f"Island {island_id} foreign inspiration {foreign[0][2]} from island {source_island}")
 
             local_limit = limit - len(foreign)
-            chosen = []
-            if matches and local_limit > 0:
-                chosen = matches[:1] + random.sample(matches[1:], min(local_limit - 1, len(matches) - 1))
-            return [self._read_row(match) for match in chosen + foreign]
+            local_references = []
+            if local_candidates and local_limit > 0:
+                local_references = local_candidates[:1]
+                additional_count = min(local_limit - 1, len(local_candidates) - 1)
+                local_references.extend(random.sample(local_candidates[1:], additional_count))
+            return [self._read_row(match) for match in local_references + foreign]
 
     def sample_island(self) -> int:
         with database_errors():
             baseline = self.select("SELECT score FROM evolve WHERE parent_id IS NULL")
             assert_db(len(baseline) == 1, "Island sampling requires one baseline")
+            baseline_score = baseline[0][0]
             count = read_island_count(self.db)
-            owned = {island: (score, size) for island, score, size in self.select("SELECT island_id, MAX(score), COUNT(*) FROM evolve WHERE island_id IS NOT NULL GROUP BY island_id")}
+            island_results = {island: (score, size) for island, score, size in self.select("SELECT island_id, MAX(score), COUNT(*) FROM evolve WHERE island_id IS NOT NULL GROUP BY island_id")}
             stats = []
             for island in range(count):
-                score, size = owned.get(island, (baseline[0][0], 0))
-                stats.append((island, max(baseline[0][0], score), size + 1))
-            best = max(row[1] for row in stats)
-            quality = [math.exp((math.log(row[1]) - math.log(best)) / config.cfg.softmax_temp) for row in stats]
+                best_score, population_size = island_results.get(island, (baseline_score, 0))
+                stats.append((island, max(baseline_score, best_score), population_size + 1))
+            best_score = max(score for _, score, _ in stats)
+            quality = [math.exp((math.log(score) - math.log(best_score)) / config.cfg.softmax_temp) for _, score, _ in stats]
             total = sum(quality)
             # Counts include the shared baseline, keeping the ratio defined for new islands.
             # Greater population imbalance reduces score bias towards uniform allocation.
-            balance = min(row[2] for row in stats) / max(row[2] for row in stats)
+            population_sizes = [size for _, _, size in stats]
+            balance = min(population_sizes) / max(population_sizes)
             weights = [balance * weight / total + (1 - balance) / len(stats) for weight in quality]
-            return random.choices([row[0] for row in stats], weights)[0]
+            return random.choices([island for island, _, _ in stats], weights)[0]
 
     def weighted_sample(self, island_id: int) -> PrimaryTableRow:
         with database_errors():
@@ -231,21 +238,18 @@ class Database():
             samples = self.cursor.execute(f"SELECT id, score FROM {self.PRIMARY_TABLE} WHERE (island_id = ? OR island_id IS NULL) ORDER BY id", (island_id,)).fetchall()
             assert_db(bool(samples), f"Island {island_id} has no parent candidates")
 
-            # Sanitize quickly
-            bad_ids = [s[0] for s in samples if s[1] <= 0 or not math.isfinite(s[1])] # TODO: Support 0
-            assert_db(len(bad_ids) == 0, f"Scores must all be greater than zero. ID(s) that failed that condition: {bad_ids}")
+            invalid_ids = [attempt_id for attempt_id, score in samples if score <= 0 or not math.isfinite(score)]
+            assert_db(len(invalid_ids) == 0, f"Scores must all be greater than zero. ID(s) that failed that condition: {invalid_ids}")
 
-            # Calculate temp
-            temp = config.cfg.softmax_temp * min(max((self.iters_since_last_improvement(island_id) + 1) / 3, 1), 8) # Linearly grow the temp multiplier from 1x to 8x
+            # Stagnation raises the temperature multiplier from 1x to 8x.
+            stagnant_attempts = self.iters_since_last_improvement(island_id)
+            temperature_multiplier = min(max((stagnant_attempts + 1) / 3, 1), 8)
+            temperature = config.cfg.softmax_temp * temperature_multiplier
 
-            # Calculate weights
-            scores = [
-                s[1]
-                for s in samples
-            ]
+            scores = [score for _, score in samples]
             max_score = max(scores)
             weights = [
-                math.exp((math.log(score) - math.log(max_score)) / temp)
+                math.exp((math.log(score) - math.log(max_score)) / temperature)
                 for score in scores
             ]
 

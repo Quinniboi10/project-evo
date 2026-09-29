@@ -197,10 +197,10 @@ class RoutingTests(unittest.TestCase):
     def test_tasks_adapters_and_fallback(self):
         for adapter in ("codex", "opencode"):
             self.cfg.adapter = lambda model: adapter
-            self.assertEqual(llm.route_prompt(Path("workspace"), "prompt", Task.EXPLORE), "explore")
-            self.assertEqual(llm.route_prompt(Path("workspace"), "prompt", Task.IMPROVE), "improve")
+            self.assertEqual(llm.run_agent(Path("workspace"), "prompt", Task.EXPLORE), "explore")
+            self.assertEqual(llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE), "improve")
         llm.running_processes["explore"] = 1
-        self.assertEqual(llm.route_prompt(Path("workspace"), "prompt", Task.EXPLORE), "fallback")
+        self.assertEqual(llm.run_agent(Path("workspace"), "prompt", Task.EXPLORE), "fallback")
         self.assertEqual(llm.running_processes["fallback"], 0)
         self.codex.assert_not_called()
         self.opencode.assert_not_called()
@@ -208,12 +208,12 @@ class RoutingTests(unittest.TestCase):
     def test_nonzero_timeout_and_unsupported_adapter(self):
         self.query.return_value = subprocess.CompletedProcess(["smoke"], 2, "out", "error")
         with self.assertRaises(subprocess.CalledProcessError):
-            llm.route_prompt(Path("workspace"), "prompt", Task.IMPROVE)
+            llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE)
         self.query.side_effect = subprocess.TimeoutExpired("smoke", 10)
-        self.assertEqual(llm.route_prompt(Path("workspace"), "prompt", Task.IMPROVE), "improve")
+        self.assertEqual(llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE), "improve")
         self.cfg.adapter = lambda model: "unsupported"
         with self.assertRaises(KillPoolException):
-            llm.route_prompt(Path("workspace"), "prompt", Task.IMPROVE)
+            llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE)
         self.assertEqual(llm.running_processes["improve"], 0)
         self.assertEqual(self.autocommit.call_count, 3)
 
@@ -222,7 +222,7 @@ class RoutingTests(unittest.TestCase):
         for adapter, mock in (("codex", self.codex), ("opencode", self.opencode)):
             self.cfg.adapter = lambda model: adapter
             mock.return_value = subprocess.CompletedProcess([adapter], 0, "out", "")
-            llm.route_prompt(Path("workspace"), "prompt", Task.IMPROVE)
+            llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE)
             mock.assert_called_once()
         self.query.assert_not_called()
 
@@ -230,7 +230,7 @@ class RoutingTests(unittest.TestCase):
         adapter = Mock(side_effect=KeyError("missing adapter"))
         self.cfg.adapter = adapter
         with self.assertRaisesRegex(KeyError, "missing adapter"):
-            llm.route_prompt(Path("workspace"), "prompt", Task.IMPROVE)
+            llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE)
         self.assertEqual(llm.running_processes["improve"], 0)
         self.query.assert_not_called()
         self.autocommit.assert_called_once_with(Path("workspace"))
@@ -238,7 +238,7 @@ class RoutingTests(unittest.TestCase):
     def test_commit_failure_still_releases_provider(self):
         self.autocommit.side_effect = KillWorkerException("commit failed")
         with self.assertRaisesRegex(KillWorkerException, "commit failed"):
-            llm.route_prompt(Path("workspace"), "prompt", Task.IMPROVE)
+            llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE)
         self.assertEqual(llm.running_processes["improve"], 0)
 
     def test_agent_requirements_are_skipped_only_in_smoke_mode(self):
@@ -284,7 +284,7 @@ class WorkerFailureTests(unittest.TestCase):
         cfg = SimpleNamespace(db_file="unused", island_count=1, inspiration_count=2, cross_island_inspiration_probability=0.1, evaluation_semaphore=BoundedSemaphore(1), eval_fn=Mock(side_effect=RuntimeError("evaluation failed")))
         parent = PrimaryTableRow("Baseline", "baseline", None, None, None, 1)
         parent.id = 1
-        with patch.object(config, "cfg", cfg), patch.object(evolve, "Database") as database, patch.object(git, "create_new_workspace", return_value=Path("workspace")), patch.object(git, "delete_workspace") as cleanup, patch.object(llm, "route_prompt"), patch.object(evolve, "build_prompt", return_value="prompt"):
+        with patch.object(config, "cfg", cfg), patch.object(evolve, "Database") as database, patch.object(git, "create_new_workspace", return_value=Path("workspace")), patch.object(git, "delete_workspace") as cleanup, patch.object(llm, "run_agent"), patch.object(evolve, "build_prompt", return_value="prompt"):
             database.return_value.weighted_sample.return_value = parent
             database.return_value.sample_inspirations.return_value = []
             with self.assertRaisesRegex(RuntimeError, "evaluation failed"):
