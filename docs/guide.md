@@ -75,6 +75,8 @@ conditions; idle slots do not isolate them from agent builds or power-mode chang
 
 Run `project-evo dashboard --db PATH` to open the lineage workbench. Filter populations, replay the global history, or explore the overall tree as it grows.
 
+On the same machine, active attempts appear with pulsing gold outlines, refreshed every 10 seconds. Run and dashboard use localhost port `49371` for optional status sharing; set `--status-port PORT` on both to change it. An occupied port prompts before running without status sharing. If status is unavailable, the saved graph still works; active status includes evaluation and repairs, not proof of agent progress.
+
 ## Smoke runs
 
 Run `project-evo run --smoke -i 12 --debug` to check worktrees, commits, database storage, routing and logging without querying LLMs. Requires Git and a config from `project-evo init` or the checkout.

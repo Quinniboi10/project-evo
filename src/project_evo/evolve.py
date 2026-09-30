@@ -8,6 +8,7 @@ from .version import version_string
 from . import config
 from . import git
 from . import llm
+from . import activity
 
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from uuid import uuid7
@@ -17,11 +18,13 @@ from pathlib import Path
 import argparse
 import logging
 import random
+import errno
 
 from tqdm import tqdm
 
 random.seed(42)
 _idle_evaluator: IdleEvaluator|None = None
+_status_server: activity.StatusServer|None = None
 
 def build_parser(add_help: bool=True) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
@@ -45,6 +48,7 @@ def build_parser(add_help: bool=True) -> argparse.ArgumentParser:
     parser.add_argument("-c", "--config", help="Path to the config.toml", metavar="PATH", default="config.toml")
     parser.add_argument("-i", "--iterations", help="Number of iterations to run", metavar="int", type=int, required=True)
     parser.add_argument("--db", help="Path to a database file to begin/resume from. Only run this on trusted databases to avoid command injections", metavar="PATH", default=None)
+    parser.add_argument("--status-port", type=activity.port_number, default=activity.DEFAULT_PORT, metavar="PORT", help=f"Optional port for sharing active-attempt status with the dashboard; not required for evolution (default: {activity.DEFAULT_PORT})")
     parser.add_argument("--logfile", help="Path to log to", metavar="PATH", default="project-evo.log")
     parser.add_argument("--gnhf", help="Short for \"good night have fun\". Agents will keep working and errors are logged but do not terminate work", action="store_true")
     parser.add_argument("--debug", help="Enable debug-level logging", action="store_true")
@@ -90,9 +94,12 @@ def run_worker(island_id: int):
         task = Task.EXPLORE if random.random() < 0.3 else Task.IMPROVE # TODO: smarter exploration
 
         child = PrimaryTableRow.create_new_child(parent, task)
-        workspace = git.create_new_workspace(parent, child)
+        workspace = None
+        if _status_server is not None:
+            _status_server.add(child, island_id)
 
         try:
+            workspace = git.create_new_workspace(parent, child)
             references = db.sample_inspirations(parent, config.cfg.inspiration_count, island_id, config.cfg.cross_island_inspiration_probability)
             logging.log(logging.INFO, f"Island {island_id} attempt {child.uuid}, parent {parent.uuid}, inspirations {[row.uuid for row in references]}")
             inspirations, reference_ids = build_inspiration_context(parent, references)
@@ -118,7 +125,12 @@ def run_worker(island_id: int):
 
             db.insert_attempt(child, island_id, reference_ids)
         finally:
-            git.delete_workspace(workspace)
+            try:
+                if workspace is not None:
+                    git.delete_workspace(workspace)
+            finally:
+                if _status_server is not None:
+                    _status_server.remove(child.uuid)
 
 def select_island() -> int:
     with closing(Database(config.cfg.db_file, island_count=config.cfg.island_count)) as db:
@@ -181,10 +193,28 @@ def run_iterations() -> int:
     return 0
 
 def run(args: argparse.Namespace) -> int:
+    global _status_server
     config.cfg = config.Config(args)
     check_requirements()
-    init_db()
-    return run_iterations()
+    try:
+        _status_server = activity.StatusServer(config.cfg.db_file, args.status_port)
+    except OSError as error:
+        message = f"Status port {args.status_port} is in use" if error.errno in (errno.EADDRINUSE, 10048) else f"Cannot share dashboard status: {error}"
+        logging.log(logging.WARNING, message)
+        if error.errno in (errno.EADDRINUSE, 10048):
+            try:
+                answer = input(f"{message}. Use --status-port to choose another port. Continue without live dashboard status? [y/N] ")
+            except (EOFError, KeyboardInterrupt):
+                return 1
+            if answer.strip().lower() != "y":
+                return 1
+    try:
+        init_db()
+        return run_iterations()
+    finally:
+        if _status_server is not None:
+            _status_server.close()
+            _status_server = None
 
 def execute(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if args.smoke:

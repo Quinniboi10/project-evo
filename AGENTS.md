@@ -94,9 +94,21 @@ configuration is currently checked in.
   routine changes. Its style is separate from the handwritten Python core.
 
 Style matching does not require reproducing typos, bugs or unsafe behavior.
-Keep diffs short and change scope tight. Change only what is needed for the
-requested behavior and its necessary tests and documentation. Preserve unrelated
-behavior; avoid incidental refactors, cleanup, formatting changes or added features.
+
+**Small, reviewable diffs are a requirement.**
+
+- Keep each change to one coherent behavior and its necessary tests and
+  documentation. Every changed line should serve that purpose. Preserve unrelated
+  behavior; do not mix in refactors, cleanup, formatting changes or extra features.
+- Keep nonmechanical diffs under 800 added/deleted lines total, and complex logic
+  changes under 500. These are ceilings, not targets; prefer substantially smaller
+  changes. Count tests and documentation too; do not omit needed coverage to fit.
+- When a change exceeds those limits, split it into the smallest complete,
+  independently verifiable stages based on the actual dependencies and call sites.
+  If it cannot be split safely, explain why. Do not leave scaffolding or unfinished
+  behavior merely to make a diff smaller.
+- Keep plans, comments and completion reports brief. State the behavior changed,
+  relevant validation and material limitations; omit narration and repeated detail.
 
 Always keep `README.md` edits short and concise, matching the rest of the file.
 Include essential usage and configuration details; avoid implementation walkthroughs.

@@ -179,10 +179,13 @@ class InspirationPromptTests(unittest.TestCase):
         cleanup = Mock()
         diff = Mock(return_value="-old\n+new\n")
         route = Mock(return_value="model")
-        with patch.object(evolve, "Database", database), patch.object(git, "create_new_workspace", return_value=Path("workspace")), patch.object(git, "delete_workspace", cleanup), patch.object(git, "inspiration_diff", diff), patch.object(evolve.llm, "run_agent", route), patch.object(evolve.llm, "get_attempt_name", return_value="Attempt"):
+        status = Mock()
+        with patch.object(evolve, "_status_server", status), patch.object(evolve, "Database", database), patch.object(git, "create_new_workspace", return_value=Path("workspace")), patch.object(git, "delete_workspace", cleanup), patch.object(git, "inspiration_diff", diff), patch.object(evolve.llm, "run_agent", route), patch.object(evolve.llm, "get_attempt_name", return_value="Attempt"):
             database.return_value.weighted_sample.return_value = self.parent
             database.return_value.sample_inspirations.return_value = [self.reference]
             evolve.run_worker(0)
+        status.add.assert_called_once()
+        status.remove.assert_called_once_with(status.add.call_args.args[0].uuid)
         database.return_value.sample_inspirations.assert_called_once_with(self.parent, 3, 0, 0.1)
         diff.assert_called_once_with(self.parent, self.reference)
         self.assertEqual(route.call_count, 2)

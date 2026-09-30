@@ -29,7 +29,7 @@ Open your repository in your coding agent and paste:
 Read https://github.com/Quinniboi10/project-evo and follow docs/guide.md.
 Set up Project Evo for this repository. Help me choose a benchmark,
 configure my agent, and create an evaluator that checks correctness.
-Start with 5 iterations and show me the best changes and measured improvement.
+Run me through the options for configuration too, and help me build a run command.
 ```
 
 [Usage guide](docs/guide.md) · [Example evaluators](docs/guide.md#examples) · [Dashboard](docs/guide.md#dashboard)

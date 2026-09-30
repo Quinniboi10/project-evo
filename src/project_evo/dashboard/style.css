@@ -84,10 +84,14 @@ h1 { color: var(--text); font: 500 14px var(--sans); }
 #graph-container { position: relative; flex: 1; min-height: 0; }
 #graph { position: relative; z-index: 1; width: 100%; height: 100%; }
 #band-overlay { z-index: 0; }
-#inspiration-overlay { z-index: 2; }
-#inspiration-overlay, #band-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; font-family: var(--mono); }
+#inspiration-overlay, #active-overlay { z-index: 2; }
+#inspiration-overlay, #band-overlay, #active-overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: hidden; font-family: var(--mono); }
 #graph-container[data-islands="true"] #graph { margin-left: 112px; width: calc(100% - 112px); overflow: hidden; mask-image: linear-gradient(to right, transparent, black 8px); }
-#graph-container[data-islands="true"] #inspiration-overlay { left: 112px; width: calc(100% - 112px); mask-image: linear-gradient(to right, transparent, black 8px); }
+#graph-container[data-islands="true"] :is(#inspiration-overlay, #active-overlay) { left: 112px; width: calc(100% - 112px); mask-image: linear-gradient(to right, transparent, black 8px); }
+.active-ring { fill: none; stroke: #e3b65d; stroke-width: 2; }
+.active-ring.pulsing { animation: active-pulse 3s ease-in-out infinite; }
+@keyframes active-pulse { 0%, 100% { stroke-opacity: 0.35; } 50% { stroke-opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .active-ring.pulsing { animation: none; } }
 #legend { position: absolute; z-index: 3; left: 24px; right: 24px; bottom: 12px; display: flex; flex-wrap: wrap; gap: 16px; font-size: 11px; color: var(--muted); pointer-events: none; }
 #legend > span { display: flex; align-items: center; gap: 8px; background: var(--canvas); }
 .legend-diamond { width: 7px; height: 7px; background: var(--positive); transform: rotate(45deg); }

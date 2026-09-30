@@ -2,6 +2,7 @@ from .version import version_string
 from .database import Database, check_schema_version, read_island_count, decode_references, database_errors
 from .error import DatabaseException
 from .utils import abbreviate_score
+from . import activity
 
 from pathlib import Path
 from typing import cast
@@ -15,12 +16,14 @@ from flask import Flask, jsonify, current_app, abort
 app = Flask(__name__, static_folder=str(Path(__file__).resolve().parent / "dashboard"))
 
 DB_FILE = cast(Path, None)
+STATUS_PORT = activity.DEFAULT_PORT
 
 def build_parser(add_help: bool=True) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
                     prog=version_string, add_help=add_help,
                     description="MCTS-inspired code improvement using LLMs")
     parser.add_argument("--db", help="Path to a database file to visualize", metavar="PATH", required=True)
+    parser.add_argument("--status-port", type=activity.port_number, default=activity.DEFAULT_PORT, metavar="PORT", help=f"Runner's status-sharing port; must match its --status-port (default: {activity.DEFAULT_PORT})")
  
     return parser
 
@@ -63,8 +66,9 @@ def row_data(id: int):
 
 @app.get("/api/graph")
 def graph_data():
+    active = activity.read_active(DB_FILE, STATUS_PORT)
     with read_snapshot() as db:
-        rows = db.execute("SELECT id, name, score, parent_id, task, island_id, reference_ids FROM evolve ORDER BY id").fetchall()
+        rows = db.execute("SELECT id, uuid, name, score, parent_id, task, island_id, reference_ids FROM evolve ORDER BY id").fetchall()
         islands = read_metadata(db)
         metadata = {row["id"]: attempt_metadata(row, islands) for row in rows}
 
@@ -87,21 +91,22 @@ def graph_data():
             depths[ancestor] = depth
         id = row["id"]
         nodes.append({
-            "id": id, "name": row["name"], "score_label": abbreviate_score(row["score"]),
+            "id": id, "uuid": row["uuid"], "name": row["name"], "score_label": abbreviate_score(row["score"]),
             "score": row["score"], "level": depths[id],
             **metadata[id]
         })
         if row["parent_id"] is not None:
             edges.append({"from": row["parent_id"], "to": id, "label": row["task"]})
-    return jsonify({"nodes": nodes, "edges": edges, "islands": islands})
+    return jsonify({"nodes": nodes, "edges": edges, "islands": islands, "active": active})
 
 @app.get("/")
 def dashboard():
     return current_app.send_static_file("index.html")
 
 def run(args: argparse.Namespace):
-    global DB_FILE
+    global DB_FILE, STATUS_PORT
     DB_FILE = Path(args.db).resolve(strict=True)
+    STATUS_PORT = args.status_port
 
     with read_snapshot() as db:
         read_metadata(db)
