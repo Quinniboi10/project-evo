@@ -1,4 +1,4 @@
-from .error import KillPoolException
+from .error import KillPoolException, KillWorkerException
 from .task import Task
 from . import config
 from . import git
@@ -21,13 +21,13 @@ opencode_env["OPENCODE_SANDBOX_CONFIG"] = (Path(__file__).resolve().parent / "co
 def _codex(workspace: Path, model_name: str, prompt: str, extra_args: list[str]):
     return subprocess.run(
         ["codex", "exec", "--ephemeral", "--cd", str(workspace), "--sandbox", "workspace-write", "-m"] + [model_name] + extra_args + ["-"],
-        input=prompt, text=True, capture_output=True, cwd=workspace, timeout=config.cfg.llm_timeout_sec
+        input=prompt, text=True, capture_output=True, cwd=workspace, timeout=config.cfg.llm_timeout_sec, start_new_session=True
     )
 
 def _opencode(workspace: Path, model_name: str, prompt: str, extra_args: list[str]):
     return subprocess.run(
         ["opencode", "run", "--standalone", "--model", model_name] + extra_args,
-        input=prompt, text=True, capture_output=True, cwd=workspace, timeout=config.cfg.llm_timeout_sec, env=opencode_env
+        input=prompt, text=True, capture_output=True, cwd=workspace, timeout=config.cfg.llm_timeout_sec, env=opencode_env, start_new_session=True
     )
 
 def run_agent(workspace: Path, prompt: str, task: Task) -> str:
@@ -63,7 +63,10 @@ def run_agent(workspace: Path, prompt: str, task: Task) -> str:
         level = logging.ERROR if result.returncode != 0 else logging.DEBUG
         logging.log(level, f"INBOUND STDERR: {result.stderr}")
         logging.log(level, f"INBOUND STDOUT: {result.stdout}")
-        result.check_returncode()
+        try:
+            result.check_returncode()
+        except subprocess.CalledProcessError as e:
+            raise KillWorkerException(f"{adapter}/{model} in {workspace} exited with status {result.returncode}. See the logfile for details.") from e
 
         logging.log(logging.INFO, f"Worker finished in {str(workspace)}")
     except subprocess.TimeoutExpired:

@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -17,7 +18,7 @@ class AdapterTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="evo-adapters-") as directory:
             root = Path(directory)
             script = root / "provider.py"
-            script.write_text("import json, os, sys\nprint(json.dumps({'argv': sys.argv[1:], 'prompt': sys.stdin.read(), 'cwd': os.getcwd(), 'sandbox': os.environ.get('OPENCODE_SANDBOX_CONFIG')}))\n")
+            script.write_text("import json, os, sys\nprint(json.dumps({'argv': sys.argv[1:], 'prompt': sys.stdin.read(), 'cwd': os.getcwd(), 'sandbox': os.environ.get('OPENCODE_SANDBOX_CONFIG'), 'session': os.getsid(0) if os.name == 'posix' else None}))\n")
             real_run = subprocess.run
 
             def run(command: list[str], **kwargs):
@@ -33,6 +34,8 @@ class AdapterTests(unittest.TestCase):
                         payload = json.loads(result.stdout)
                         self.assertEqual(payload["prompt"], prompt)
                         self.assertEqual(payload["cwd"], str(root))
+                        if os.name == "posix":
+                            self.assertNotEqual(payload["session"], os.getsid(0))
                         if adapter is llm._codex:
                             self.assertEqual(payload["argv"], ["codex", "exec", "--ephemeral", "--cd", str(root), "--sandbox", "workspace-write", "-m", "model/name", "--profile", "with spaces", "-"])
                         else:

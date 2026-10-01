@@ -1,2 +1,2 @@
-__version__ = "1.13.0"
+__version__ = "1.13.2"
 version_string = f"Project Evo {__version__}"

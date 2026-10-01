@@ -19,6 +19,7 @@ import argparse
 import logging
 import random
 import errno
+import sys
 
 from tqdm import tqdm
 
@@ -50,7 +51,7 @@ def build_parser(add_help: bool=True) -> argparse.ArgumentParser:
     parser.add_argument("--db", help="Path to a database file to begin/resume from. Only run this on trusted databases to avoid command injections", metavar="PATH", default=None)
     parser.add_argument("--status-port", type=activity.port_number, default=activity.DEFAULT_PORT, metavar="PORT", help=f"Optional port for sharing active-attempt status with the dashboard; not required for evolution (default: {activity.DEFAULT_PORT})")
     parser.add_argument("--logfile", help="Path to log to", metavar="PATH", default="project-evo.log")
-    parser.add_argument("--gnhf", help="Short for \"good night have fun\". Agents will keep working and errors are logged but do not terminate work", action="store_true")
+    parser.add_argument("--gnhf", help="Short for \"good night have fun\". Worker failures are logged and displayed as warnings; replace failed workers instead of stopping. Fatal errors still stop the run", action="store_true")
     parser.add_argument("--debug", help="Enable debug-level logging", action="store_true")
     parser.add_argument("--smoke", help="Simulate a protected run in a retained temporary repository without querying LLMs", action="store_true")
  
@@ -141,6 +142,7 @@ def run_iterations() -> int:
     pool = ThreadPoolExecutor(max_workers=config.cfg.concurrency)
     pending_workers: dict[Future[None], int] = {}
     iterations_to_submit = config.cfg.iterations
+    worker_failure_reported = False
 
     try:
         if getattr(config.cfg, "reevaluate_idle", False) and iterations_to_submit > 0:
@@ -163,7 +165,10 @@ def run_iterations() -> int:
                     try:
                         future.result()
                     except KillWorkerException as e:
+                        action = "Starting a replacement worker." if config.cfg.gnhf else "Stopping the run."
+                        tqdm.write(f"Warning: {e} {action}", file=sys.stderr)
                         if not config.cfg.gnhf:
+                            worker_failure_reported = True
                             raise
                         logging.log(logging.ERROR, f"A worker raised {type(e)}. {e}")
                         pending_workers[pool.submit(run_worker, island_id)] = island_id # Keep replacements on the same island
@@ -178,7 +183,8 @@ def run_iterations() -> int:
             print("\nCaught keyboard interrupt. Exiting...")
         else:
             logging.log(logging.ERROR, f"A worker raised {type(e)}. {e}")
-            print(f"A worker raised {type(e)}. Exiting...")
+            if not worker_failure_reported:
+                print(f"A worker raised {type(e)}. Exiting...")
         logging.log(logging.WARNING, "Cancelling future threads and waiting for pool shutdown")
         return 0 if isinstance(e, KeyboardInterrupt) else 1
     finally:

@@ -207,7 +207,7 @@ class RoutingTests(unittest.TestCase):
 
     def test_nonzero_timeout_and_unsupported_adapter(self):
         self.query.return_value = subprocess.CompletedProcess(["smoke"], 2, "out", "error")
-        with self.assertRaises(subprocess.CalledProcessError):
+        with self.assertRaises(KillWorkerException):
             llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE)
         self.query.side_effect = subprocess.TimeoutExpired("smoke", 10)
         self.assertEqual(llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE), "improve")
@@ -216,6 +216,20 @@ class RoutingTests(unittest.TestCase):
             llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE)
         self.assertEqual(llm.running_processes["improve"], 0)
         self.assertEqual(self.autocommit.call_count, 3)
+
+    def test_nonzero_agent_exit_is_worker_failure(self):
+        self.cfg.args.smoke = False
+        for adapter, mock in (("codex", self.codex), ("opencode", self.opencode)):
+            self.cfg.adapter = lambda model: adapter
+            mock.return_value = subprocess.CompletedProcess([adapter], 1, "", "Selected model is at capacity")
+            with self.assertRaisesRegex(KillWorkerException, f"{adapter}/improve in workspace exited with status 1") as raised:
+                llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE)
+            cause = raised.exception.__cause__
+            self.assertIsInstance(cause, subprocess.CalledProcessError)
+            assert isinstance(cause, subprocess.CalledProcessError)
+            self.assertEqual(cause.stderr, "Selected model is at capacity")
+            self.assertEqual(llm.running_processes["improve"], 0)
+        self.assertEqual(self.autocommit.call_count, 2)
 
     def test_normal_mode_uses_real_adapter_boundary(self):
         self.cfg.args.smoke = False
@@ -273,6 +287,21 @@ class WorkerFailureTests(unittest.TestCase):
                 with patch.object(config, "cfg", cfg), patch.object(evolve, "select_island", return_value=0), patch.object(evolve, "run_worker", side_effect=[error("test"), None]) as worker:
                     self.assertEqual(evolve.run_iterations(), expected)
                     self.assertEqual(worker.call_count, 2 if gnhf and error is KillWorkerException else 1)
+
+    def test_worker_failure_warning_and_continuation(self):
+        for gnhf in (False, True):
+            with self.subTest(gnhf=gnhf):
+                cfg = SimpleNamespace(concurrency=1, iterations=1, gnhf=gnhf)
+                worker = Mock(side_effect=[KillWorkerException("agent exited with status 1"), None])
+                write = Mock()
+                output = Mock()
+                with patch.object(config, "cfg", cfg), patch.object(evolve, "select_island", return_value=2), patch.object(evolve, "run_worker", worker), patch.object(evolve.tqdm, "write", write), patch("builtins.print", output):
+                    self.assertEqual(evolve.run_iterations(), 0 if gnhf else 1)
+                action = "Starting a replacement worker." if gnhf else "Stopping the run."
+                write.assert_called_once_with(f"Warning: agent exited with status 1 {action}", file=sys.stderr)
+                output.assert_not_called()
+                self.assertEqual(worker.call_count, 2 if gnhf else 1)
+                self.assertTrue(all(call.args == (2,) for call in worker.call_args_list))
 
     def test_cancellation_while_waiting(self):
         cfg = SimpleNamespace(concurrency=1, iterations=1, island_count=4, gnhf=False)
