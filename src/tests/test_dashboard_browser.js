@@ -250,6 +250,14 @@ async function run() {
         await page.evaluate(() => refreshGraph());
         assert.equal(await page.locator("#live-status").textContent(), "Reconnecting…");
         await checkGraph(page);
+        snapshot = fixture(5, 1);
+        snapshot.nodes.forEach(node => { node.level = node.id === 1 ? 0 : node.id <= 3 ? 1 : 2; });
+        snapshot.edges = [{ from: 1, to: 2 }, { from: 1, to: 3 }, { from: 3, to: 4 }, { from: 2, to: 5 }, { from: 2, to: 6 }];
+        await page.evaluate(graph => { receiveGraph(graph); chooseIsland(null); step.value = step.max; showAttempt(); }, snapshot);
+        await checkGraph(page);
+        assert.deepEqual(await page.evaluate(() => [4, 5, 6].sort((a, b) => network.getPositions()[a].y - network.getPositions()[b].y)), [5, 6, 4]);
+        await page.locator("#fit").click();
+        await page.screenshot({ path: "/tmp/evo-family-order.png" });
         assert.deepEqual(errors, []);
         console.log("Browser tests passed: rapid switching, renderer positions, full replay, live updates, selection, six viewports, empty/legacy/1,000-attempt data, and reconnecting");
     } finally {

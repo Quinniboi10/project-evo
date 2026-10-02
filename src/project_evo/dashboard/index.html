@@ -165,7 +165,7 @@
             document.getElementById("row-heading").textContent = node.active ? "In-progress attempt" : `Attempt #${node.id}`;
             document.getElementById("attempt-name").textContent = node.name;
             document.getElementById("attempt-score").textContent = node.active ? "Unscored" : node.score.toLocaleString("en-US", { maximumSignificantDigits: 21 });
-            document.getElementById("attempt-ratio").textContent = node.active ? `${formatTime(Date.now() - node.started * 1000)} elapsed` : baseline?.score > 0 ? `${(node.score / baseline.score).toFixed(2)}× baseline` : "Baseline unavailable";
+            document.getElementById("attempt-ratio").textContent = node.active ? `${formatTime(Date.now() - node.started * 1000)} elapsed` : baseline?.score > 0 ? `${formatSpeedup(node.score / baseline.score)} vs baseline` : "Baseline unavailable";
             document.getElementById("attempt-island").textContent = islandLabel(node) || "Not recorded";
             document.getElementById("attempt-parent").textContent = parent ? `#${parent.from}` : "Baseline";
             const task = rowData?.task ?? parent?.label;
@@ -340,7 +340,7 @@
                 const count = document.createElement("span");
                 count.textContent = `${attempts} attempts`;
                 const ratio = document.createElement("span");
-                ratio.textContent = champion && baseline?.score > 0 ? `${(champion.score / baseline.score).toFixed(2)}×` : "—";
+                ratio.textContent = champion && baseline?.score > 0 ? formatSpeedup(champion.score / baseline.score) : "—";
                 button.children[1].replaceChildren(count, ratio);
                 button.lastChild.className = "island-result";
                 button.lastChild.textContent = champion ? `Best ${champion.score_label}` : "No attempts yet";
@@ -556,6 +556,10 @@
             }, 50);
         };
 
+        function formatSpeedup(ratio) {
+            return ratio >= 2 ? `${ratio.toFixed(2)}×` : `${ratio > 1 ? "+" : ""}${((ratio - 1) * 100).toFixed(2)}%`;
+        }
+
         function formatTime(timeInMS) {
             let seconds = Math.max(0, Math.floor(timeInMS / 1000));
             const days = Math.floor(seconds / 86400);
@@ -589,6 +593,8 @@
             const positions = new Map();
             let top = 0;
             const layoutNodes = [...fullGraph.nodes, ...visibleGraph.nodes.filter(node => node.active)];
+            const parents = new Map(fullGraph.edges.map(edge => [edge.to, edge.from]));
+            for (const node of layoutNodes.filter(node => node.active)) parents.set(node.id, node.parent_id);
             // Use the complete snapshot so replay reveals nodes without reordering islands.
             for (const island of [...(fullGraph.islands ?? [])].sort((a, b) => a - b)) {
                 const levels = new Map();
@@ -598,8 +604,10 @@
                     levels.get(node.level).push(node);
                 }
                 const rows = Math.max(1, ...[...levels.values()].map(layer => layer.length));
-                for (const [level, layer] of levels) {
-                    layer.sort((a, b) => Number(Boolean(a.active)) - Number(Boolean(b.active)) || (a.active ? a.id.localeCompare(b.id) : a.id - b.id));
+                for (const [level, layer] of [...levels].sort((a, b) => a[0] - b[0])) {
+                    // Keep families in parent order to avoid crossings between generations.
+                    layer.sort((a, b) => (positions.get(parents.get(a.id))?.y ?? 0) - (positions.get(parents.get(b.id))?.y ?? 0)
+                        || Number(Boolean(a.active)) - Number(Boolean(b.active)) || (a.active ? a.id.localeCompare(b.id) : a.id - b.id));
                     layer.forEach((node, index) => positions.set(node.id, {
                         x: level * 230, y: top + (rows - layer.length) * 50 + index * 100
                     }));
@@ -625,7 +633,7 @@
             const attempts = graph.nodes.filter(node => !node.active).length - roots.length;
             const parentsExplored = new Set(graph.edges.filter(edge => typeof edge.to === "number").map(edge => edge.from)).size;
             document.getElementById("best-score").textContent = best?.score_label ?? "—";
-            document.getElementById("best-ratio").textContent = Number.isFinite(ratio) ? `${ratio.toFixed(2)}×` : "—";
+            document.getElementById("best-ratio").textContent = Number.isFinite(ratio) ? formatSpeedup(ratio) : "—";
             document.getElementById("best-id").textContent = best ? `Attempt #${best.id}` : "No attempts yet";
             document.getElementById("attempt-count").textContent = String(attempts);
             document.getElementById("summary").textContent = graph.nodes.length ? `${parentsExplored} parents explored · ${graph.nodes.length} nodes` : "Waiting for the first candidate";

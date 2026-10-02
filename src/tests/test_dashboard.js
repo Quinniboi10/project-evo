@@ -74,6 +74,31 @@ const html = fs.readFileSync(`${__dirname}/../project_evo/dashboard/index.html`,
 vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context);
 const run = code => vm.runInContext(code, context);
 const result = code => JSON.parse(JSON.stringify(run(code)));
+run(`
+    fullGraph = {
+        islands: [0, 1],
+        nodes: [
+            { id: 1, level: 0, island_ids: [0, 1] },
+            { id: 4, level: 2, island_ids: [0] },
+            { id: 5, level: 2, island_ids: [0] },
+            { id: 6, level: 2, island_ids: [0] },
+            { id: 2, level: 1, island_ids: [0] },
+            { id: 3, level: 1, island_ids: [0] },
+            { id: 7, level: 1, island_ids: [1] }
+        ],
+        edges: [{ from: 1, to: 2 }, { from: 1, to: 3 }, { from: 3, to: 4 }, { from: 2, to: 5 }, { from: 2, to: 6 }, { from: 1, to: 7 }]
+    };
+    visibleGraph = { nodes: fullGraph.nodes, edges: fullGraph.edges };
+`);
+const familyOrder = "[...islandPositions()].filter(([id]) => [4, 5, 6].includes(id)).sort((a, b) => a[1].y - b[1].y).map(([id]) => id)";
+assert.deepEqual(result(familyOrder), [5, 6, 4], "Children follow parent positions, with ID ordering among siblings");
+const familyPositions = result("[...islandPositions()]");
+assert.ok(run("islandPositions().get(7).y > Math.max(...[2, 3, 4, 5, 6].map(id => islandPositions().get(id).y))"));
+run("visibleGraph.nodes = fullGraph.nodes.slice(0, 2)");
+assert.deepEqual(result("[...islandPositions()]"), familyPositions, "Replay retains complete-snapshot positions");
+run('visibleGraph.nodes = [{ id: "active:z", parent_id: 2, level: 2, island_ids: [0], active: true }, { id: "active:a", parent_id: 2, level: 2, island_ids: [0], active: true }]');
+assert.deepEqual(result('[...islandPositions()].filter(([id]) => [4, 5, 6, "active:a", "active:z"].includes(id)).sort((a, b) => a[1].y - b[1].y).map(([id]) => id)'), [5, 6, "active:a", "active:z", 4]);
+run("fullGraph = { nodes: [], edges: [] }; visibleGraph = { nodes: [], edges: [] }");
 const graph = {
     islands: [0, 1, 2],
     nodes: [
@@ -145,7 +170,7 @@ async function testInspector() {
     run(`receiveGraph(${JSON.stringify(graph)}); step.value = step.max; showAttempt(); selectAttempt(3)`);
     assert.equal(elements.get("attempt-name").textContent, "Local");
     assert.equal(elements.get("attempt-parent").textContent, "#1");
-    assert.equal(elements.get("attempt-ratio").textContent, "2.00× baseline");
+    assert.equal(elements.get("attempt-ratio").textContent, "2.00× vs baseline");
     assert.equal(elements.get("attempt-inspirations").textContent, "#2");
     run("showPopup(2, {x: 10, y: 10})");
     assert.equal(elements.get("attempt-name").textContent, "Local");
