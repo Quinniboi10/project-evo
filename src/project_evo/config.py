@@ -34,10 +34,6 @@ class Config:
         self._set_attributes()
         self._validate()
         self.models = set((self.exploration_model, self.improvement_model, self.fallback_model))
-        if self.args.smoke:
-            self.args.smoke_session.validate(self)
-        else:
-            self._confirm_providers()
         self.evaluation_semaphore = BoundedSemaphore(self.evaluation_concurrency)
 
     def _validate(self):

@@ -4,7 +4,6 @@ from project_evo.task import Task
 from project_evo import config
 from project_evo import evolve
 
-from argparse import Namespace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -122,7 +121,7 @@ class IslandTests(unittest.TestCase):
 
     def test_weighted_dispatch_and_replacement(self):
         calls = []
-        def worker(island: int):
+        def worker(island: int, query=None):
             calls.append(island)
             if len(calls) == 2:
                 raise KillWorkerException("replace island 1")
@@ -145,8 +144,6 @@ class IslandConfigTests(unittest.TestCase):
         cfg.evaluation_concurrency = 1
         cfg.fallback_model = "test"
         cfg._providers = {"test": {"max_concurrency": 1, "adapter": "codex", "model": "test"}}
-        validate = Mock()
-        cfg.args = Namespace(smoke=True, smoke_session=SimpleNamespace(validate=validate))
         for count, probability in ((4, 0.1), (1, 0), (8, 1)):
             cfg.island_count, cfg.cross_island_inspiration_probability = count, probability
             cfg._validate()

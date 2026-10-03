@@ -5,7 +5,6 @@ from argparse import Namespace
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import tempfile
@@ -21,8 +20,7 @@ class ConfigTests(unittest.TestCase):
         self.settings = self.root / "config.toml"
         evaluator = self.root / "evaluate.py"
         evaluator.write_text("def evaluate(workspace):\n    return True, 1\n")
-        self.validate = Mock()
-        self.args = Namespace(config=str(self.settings), logfile=str(self.root / "test.log"), debug=False, objective="Faster", project_path=str(self.root), eval_file=str(evaluator), iterations=1, db=None, gnhf=False, smoke=True, smoke_session=SimpleNamespace(validate=self.validate))
+        self.args = Namespace(config=str(self.settings), logfile=str(self.root / "test.log"), debug=False, objective="Faster", project_path=str(self.root), eval_file=str(evaluator), iterations=1, db=None, gnhf=False)
 
     def load(self, text: str) -> config.Config:
         self.settings.write_text(text)
@@ -40,13 +38,11 @@ class ConfigTests(unittest.TestCase):
             for value in values:
                 with self.subTest(key=key, value=value), self.assertRaisesRegex(ConfigError, key):
                     self.load(self.template.replace(original, f"{key} = {value}"))
-        self.validate.assert_not_called()
 
     def test_iteration_bounds(self):
         self.args.iterations = -1
         with self.assertRaisesRegex(ConfigError, "iterations"):
             self.load(self.template)
-        self.validate.assert_not_called()
         self.args.iterations = 0
         cfg = self.load(self.template.replace("max_fix_attempts = 3", "max_fix_attempts = 0"))
         self.assertEqual(cfg.iterations, 0)
@@ -67,13 +63,11 @@ class ConfigTests(unittest.TestCase):
         for old, new, message in variants:
             with self.subTest(new=new), self.assertRaisesRegex(ConfigError, message):
                 self.load(self.template.replace(old, new))
-        self.validate.assert_not_called()
 
     def test_default_configuration(self):
         cfg = self.load(self.template)
         self.assertEqual(cfg.concurrency, 5)
         self.assertEqual(cfg.extra_args("sol"), [])
-        self.validate.assert_called_once_with(cfg)
 
     def test_zero_primary_capacity_uses_fallback_configuration(self):
         cfg = self.load(self.template.replace("max_concurrency = 3", "max_concurrency = 0"))
@@ -103,14 +97,14 @@ class ConfigTests(unittest.TestCase):
         objective.write_text("Improve λ throughput")
         self.args.objective = None
         self.args.objective_file = str(objective)
-        self.args.smoke = False
         answers = Mock(return_value="Y")
         with patch("builtins.input", answers), redirect_stdout(StringIO()) as output:
             cfg = self.load(self.template)
+            answers.assert_not_called()
+            cfg._confirm_providers()
         self.assertEqual(cfg.objective, "Improve λ throughput")
         self.assertEqual(answers.call_count, 2)
         self.assertIn("OpenCode", output.getvalue())
-        self.validate.assert_not_called()
 
     def test_evaluator_import_failure_is_cleaned_up(self):
         evaluator = Path(self.args.eval_file)

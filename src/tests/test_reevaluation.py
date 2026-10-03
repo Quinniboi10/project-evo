@@ -188,7 +188,7 @@ class ReevaluationTests(unittest.TestCase):
         def evaluate(path: Path):
             self.wait_event(agent_started)
             return False, 0
-        def agent(island: int):
+        def agent(island: int, query=None):
             agent_started.set()
             self.wait_event(released)
         original_stop = IdleEvaluator.stop
@@ -209,7 +209,7 @@ class ReevaluationTests(unittest.TestCase):
             background.set()
             self.wait_event(released)
             return False, 0
-        def agent(island: int):
+        def agent(island: int, query=None):
             self.wait_event(background)
         original_stop = IdleEvaluator.stop
         def stop(scheduler: IdleEvaluator):

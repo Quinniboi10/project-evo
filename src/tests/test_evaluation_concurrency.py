@@ -21,7 +21,7 @@ class EvaluationConcurrencyTests(unittest.TestCase):
             evaluator = root / "evaluate.py"
             evaluator.write_text("def evaluate(workspace):\n    return True, 1\n")
             settings = root / "config.toml"
-            args = Namespace(config=str(settings), logfile=str(root / "test.log"), debug=False, objective="Faster", project_path=str(root), eval_file=str(evaluator), iterations=1, db=None, gnhf=False, smoke=True, smoke_session=SimpleNamespace(validate=Mock()))
+            args = Namespace(config=str(settings), logfile=str(root / "test.log"), debug=False, objective="Faster", project_path=str(root), eval_file=str(evaluator), iterations=1, db=None, gnhf=False)
             for value in (None, "1", "2", "9", "0", "-1", "true", "1.5", '"2"'):
                 with self.subTest(value=value):
                     replacement = "# omitted" if value is None else f"evaluation_concurrency = {value}"

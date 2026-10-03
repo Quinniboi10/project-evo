@@ -71,6 +71,7 @@ const context = vm.createContext({
     fetch: () => new Promise(() => {}), console, performance
 });
 const html = fs.readFileSync(`${__dirname}/../project_evo/dashboard/index.html`, "utf8");
+vm.runInContext(fs.readFileSync(`${__dirname}/../project_evo/dashboard/graph.js`, "utf8"), context);
 vm.runInContext(html.match(/<script>([\s\S]*?)<\/script>/)[1], context);
 const run = code => vm.runInContext(code, context);
 const result = code => JSON.parse(JSON.stringify(run(code)));
@@ -88,17 +89,17 @@ run(`
         ],
         edges: [{ from: 1, to: 2 }, { from: 1, to: 3 }, { from: 3, to: 4 }, { from: 2, to: 5 }, { from: 2, to: 6 }, { from: 1, to: 7 }]
     };
-    visibleGraph = { nodes: fullGraph.nodes, edges: fullGraph.edges };
+    view.graph = { nodes: fullGraph.nodes, edges: fullGraph.edges };
 `);
-const familyOrder = "[...islandPositions()].filter(([id]) => [4, 5, 6].includes(id)).sort((a, b) => a[1].y - b[1].y).map(([id]) => id)";
+const familyOrder = "[...islandPositions(fullGraph, view.graph.nodes)].filter(([id]) => [4, 5, 6].includes(id)).sort((a, b) => a[1].y - b[1].y).map(([id]) => id)";
 assert.deepEqual(result(familyOrder), [5, 6, 4], "Children follow parent positions, with ID ordering among siblings");
-const familyPositions = result("[...islandPositions()]");
-assert.ok(run("islandPositions().get(7).y > Math.max(...[2, 3, 4, 5, 6].map(id => islandPositions().get(id).y))"));
-run("visibleGraph.nodes = fullGraph.nodes.slice(0, 2)");
-assert.deepEqual(result("[...islandPositions()]"), familyPositions, "Replay retains complete-snapshot positions");
-run('visibleGraph.nodes = [{ id: "active:z", parent_id: 2, level: 2, island_ids: [0], active: true }, { id: "active:a", parent_id: 2, level: 2, island_ids: [0], active: true }]');
-assert.deepEqual(result('[...islandPositions()].filter(([id]) => [4, 5, 6, "active:a", "active:z"].includes(id)).sort((a, b) => a[1].y - b[1].y).map(([id]) => id)'), [5, 6, "active:a", "active:z", 4]);
-run("fullGraph = { nodes: [], edges: [] }; visibleGraph = { nodes: [], edges: [] }");
+const familyPositions = result("[...islandPositions(fullGraph, view.graph.nodes)]");
+assert.ok(run("islandPositions(fullGraph, view.graph.nodes).get(7).y > Math.max(...[2, 3, 4, 5, 6].map(id => islandPositions(fullGraph, view.graph.nodes).get(id).y))"));
+run("view.graph.nodes = fullGraph.nodes.slice(0, 2)");
+assert.deepEqual(result("[...islandPositions(fullGraph, view.graph.nodes)]"), familyPositions, "Replay retains complete-snapshot positions");
+run('view.graph.nodes = [{ id: "active:z", parent_id: 2, level: 2, island_ids: [0], active: true }, { id: "active:a", parent_id: 2, level: 2, island_ids: [0], active: true }]');
+assert.deepEqual(result('[...islandPositions(fullGraph, view.graph.nodes)].filter(([id]) => [4, 5, 6, "active:a", "active:z"].includes(id)).sort((a, b) => a[1].y - b[1].y).map(([id]) => id)'), [5, 6, "active:a", "active:z", 4]);
+run("fullGraph = { nodes: [], edges: [] }; view.graph = { nodes: [], edges: [] }");
 const graph = {
     islands: [0, 1, 2],
     nodes: [
@@ -115,7 +116,7 @@ assert.match(elements.get("island-overview").children[3].lastChild.textContent, 
 elements.get("island-overview").children[1].onclick();
 assert.deepEqual(result("nodes.getIds()"), [1, 3]);
 assert.equal(Number(run("step.value")), 2);
-assert.equal(run("best.id"), 3);
+assert.equal(run("view.best.id"), 3);
 const before = result("[nodes.get(), edges.get(), network.getViewPosition(), network.getScale()]");
 run("showPopup(3, {x: 150, y: 100})");
 assert.equal(elements.get("inspiration-overlay").children.filter(child => child.tag === "line").length, 1);
@@ -128,16 +129,16 @@ run("showPopup(2, {x: 100, y: 40}); hidePopup()");
 assert.equal(elements.get("inspiration-overlay").children.filter(child => child.tag === "line").length, 1);
 run("selectedNodeId = null; updateSelection()");
 assert.equal(elements.get("inspiration-overlay").children.length, 0);
-run("step.value = 0; showAttempt()");
+run("timelineStep = 0; showAttempt()");
 assert.deepEqual(result("nodes.getIds()"), [1]);
-assert.equal(run("best.id"), 1);
+assert.equal(run("view.best.id"), 1);
 assert.match(elements.get("island-overview").children[1].lastChild.textContent, /Best 10/);
-run("selectedIsland = null; step.value = 2; showAttempt(); showPopup(3, {x: 150, y: 100})");
+run("selectedIsland = null; timelineStep = 2; showAttempt(); showPopup(3, {x: 150, y: 100})");
 assert.equal(elements.get("inspiration-overlay").children.filter(child => child.tag === "g").length, 0);
 assert.equal(elements.get("inspiration-overlay").children.filter(child => child.tag === "circle").length, 1);
 const positionsBeforeReplay = result("[nodes.get(2).y, nodes.get(3).y]");
 assert.ok(positionsBeforeReplay[1] < positionsBeforeReplay[0]);
-run("step.value = 1; showAttempt(); step.value = 2; showAttempt(); showPopup(3, {x: 150, y: 100})");
+run("timelineStep = 1; showAttempt(); timelineStep = 2; showAttempt(); showPopup(3, {x: 150, y: 100})");
 assert.deepEqual(result("[nodes.get(2).y, nodes.get(3).y]"), positionsBeforeReplay);
 assert.equal(elements.get("inspiration-overlay").children.filter(child => child.tag === "line").length, 1);
 run("showPopup(1, {x: 50, y: 20})");
@@ -147,12 +148,12 @@ assert.equal(elements.get("popup-inspirations").textContent, "No inspiration ref
 const updated = structuredClone(graph);
 updated.nodes.push({ id: 4, name: "New", score: 30, score_label: "30", level: 2, island_ids: [0], inspiration_ids: [2] });
 updated.edges.push({ from: 3, to: 4 });
-run(`replayTimer = 1; receiveGraph(${JSON.stringify(updated)})`);
+run(`replaying = true; replayTimer = 1; receiveGraph(${JSON.stringify(updated)})`);
 assert.equal(run("fullGraph.nodes.length"), 3);
-run("stopReplay()");
+run("stopReplay(); showAttempt()");
 assert.equal(run("fullGraph.nodes.length"), 4);
 assert.equal(Number(run("step.value")), 3);
-run("step.value = 1; showAttempt()");
+run("timelineStep = 1; showAttempt()");
 run(`receiveGraph(${JSON.stringify(updated)})`);
 assert.equal(Number(run("step.value")), 1);
 assert.equal(run("network.getScale()"), 0.8);
@@ -161,13 +162,27 @@ legacy.islands = [];
 for (const node of legacy.nodes) node.island_ids = [];
 run(`receiveGraph(${JSON.stringify(legacy)})`);
 assert.equal(elements.get("island-overview").hidden, true);
+// State changes commit one derived view, even when stopping a replay accepts new data.
+run(`
+    let derivations = 0;
+    const calculateView = deriveView;
+    deriveView = (...args) => { derivations++; return calculateView(...args); };
+    replaying = true;
+`);
+run(`receiveGraph(${JSON.stringify(updated)})`);
+assert.equal(run("derivations"), 0);
+run("chooseIsland(0)");
+assert.equal(run("derivations"), 1);
+run("step.value = 0; showAttempt()");
+assert.equal(Number(run("step.value")), Number(run("timelineStep")), "The slider mirrors state; changing its DOM value alone cannot change history");
+run("deriveView = calculateView; chooseIsland(null)");
 console.log("Dashboard state tests passed: filters, replay, hover overlays, viewport, and legacy view");
 
 async function testInspector() {
     const requests = [];
     context.fetch = (url, options) => new Promise(resolve => requests.push({ url, options, resolve }));
     const flush = () => new Promise(resolve => setImmediate(resolve));
-    run(`receiveGraph(${JSON.stringify(graph)}); step.value = step.max; showAttempt(); selectAttempt(3)`);
+    run(`receiveGraph(${JSON.stringify(graph)}); timelineStep = Number(step.max); showAttempt(); selectAttempt(3)`);
     assert.equal(elements.get("attempt-name").textContent, "Local");
     assert.equal(elements.get("attempt-parent").textContent, "#1");
     assert.equal(elements.get("attempt-ratio").textContent, "2.00× vs baseline");
@@ -201,21 +216,21 @@ async function testInspector() {
     await flush();
     assert.equal(elements.get("retry-row").hidden, true);
     assert.equal(elements.get("attempt-model").textContent, "Not recorded");
-    run("step.value = 0; showAttempt()");
+    run("timelineStep = 0; showAttempt()");
     assert.equal(run("selectedNodeId"), null);
     elements.get("latest").onclick();
     assert.equal(Number(run("step.value")), Number(run("step.max")));
     assert.equal(elements.get("latest").disabled, true);
     run("network.scale = 0.3; updateNodeLabels()");
     assert.equal(run("nodes.get(3).label"), "");
-    assert.equal(run("nodes.get(best.id).label"), "");
+    assert.equal(run("nodes.get(view.best.id).label"), "");
     assert.equal(run("nodes.get(1).label"), "");
-    assert.equal(run("nodes.get(best.id).font.size * network.getScale()"), 12);
+    assert.equal(run("nodes.get(view.best.id).font.size * network.getScale()"), 12);
     run("hoveredNodeId = 3; updateNodeLabels()");
     assert.notEqual(run("nodes.get(3).label"), "");
     assert.equal(run("nodes.get(1).label"), "");
     run("hoveredNodeId = null; network.scale = 0.7; updateNodeLabels()");
-    assert.equal(run("visibleGraph.nodes.every(node => nodes.get(node.id).label.length > 0)"), true);
+    assert.equal(run("view.graph.nodes.every(node => nodes.get(node.id).label.length > 0)"), true);
     run("isLive = true; lastUpdated = Date.now(); updateLiveStatus()");
     assert.equal(elements.get("live-status").textContent, "Connected");
     run("isLive = false; updateLiveStatus()");

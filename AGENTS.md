@@ -20,6 +20,16 @@ The runtime requires Python 3.14 or newer; dependencies are in `requirements.txt
 
 ## Engineering philosophy
 
+**Optimize for the user's total workload, including review.** Generating code is
+cheap; understanding, reviewing, debugging and maintaining it are not. Choose the
+approach that requires the least human effort while fully solving the problem.
+Before adding code, look for requirements to remove, existing behavior to reuse
+and simpler approaches. Treat every changed line and new concept as a cost that
+must earn its place. Diff limits are ceilings, not a budget to spend. Simplify the
+solution before splitting it into stages; splitting unnecessary code into smaller
+diffs does not reduce the total workload. Preserve correctness and required
+validation rather than cutting them to make a diff smaller.
+
 **Make it work first, then make it better.** Apply the user's SpaceX-inspired
 approach to planning and implementation:
 

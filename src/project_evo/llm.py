@@ -3,6 +3,7 @@ from .task import Task
 from . import config
 from . import git
 
+from typing import Callable
 from threading import Lock
 from pathlib import Path
 
@@ -10,6 +11,8 @@ import subprocess
 import logging
 import json
 import os
+
+AgentQuery = Callable[[Path, str, str, list[str]], subprocess.CompletedProcess[str]]
 
 router_lock = Lock()
 running_processes: dict[str, int] = {}
@@ -30,7 +33,7 @@ def _opencode(workspace: Path, model_name: str, prompt: str, extra_args: list[st
         input=prompt, text=True, capture_output=True, cwd=workspace, timeout=config.cfg.llm_timeout_sec, env=opencode_env, start_new_session=True
     )
 
-def run_agent(workspace: Path, prompt: str, task: Task) -> str:
+def run_agent(workspace: Path, prompt: str, task: Task, query: AgentQuery|None=None) -> str:
     # Needs to be locked so multiple workers can't add the same thing multiple times when run in parallel (like startup)
     with router_lock:
         if task == Task.EXPLORE:
@@ -48,15 +51,15 @@ def run_agent(workspace: Path, prompt: str, task: Task) -> str:
         logging.log(logging.INFO, f"Starting {adapter}/{model} in {str(workspace)}")
         logging.log(logging.DEBUG, f"OUTBOUND: {prompt}")
 
-        args = workspace, config.cfg.model_full_name(model), prompt, config.cfg.extra_args(model)
-        if config.cfg.args.smoke and adapter in ("codex", "opencode"):
-            result = config.cfg.args.smoke_session.query(*args)
-        elif adapter == "codex":
-            result = _codex(*args)
+        if adapter == "codex":
+            adapter_query = _codex
         elif adapter == "opencode":
-            result = _opencode(*args)
+            adapter_query = _opencode
         else:
             raise KillPoolException(f"Cannot route to model '{model}' because adapter '{adapter}' cannot be found")
+        if query is None:
+            query = adapter_query
+        result = query(workspace, config.cfg.model_full_name(model), prompt, config.cfg.extra_args(model))
 
         if result.returncode != 0:
             logging.log(logging.ERROR, f"{adapter}/{model} session returned non-zero exit code")

@@ -88,7 +88,7 @@ Run `project-evo run --smoke -i 12 --debug` to check worktrees, commits, databas
 
 Tests: `python3 -m unittest discover -s src/tests -v`
 
-Dashboard tests: `node src/tests/test_dashboard.js`. Browser regressions: `node src/tests/test_dashboard_browser.js` (requires Playwright and Chromium).
+Dashboard tests: `node src/tests/test_dashboard_graph.js` and `node src/tests/test_dashboard.js`. Browser regressions: `node src/tests/test_dashboard_browser.js` (requires Playwright and Chromium).
 
 ## Examples
 

@@ -60,7 +60,6 @@ def evaluate(workspace):
     return state["passed"], state["score"]
 ''')
         args.eval_file = str(evaluator)
-        args.smoke_session = self
         print(f"Smoke database: {args.db}\nSmoke log: {args.logfile}", flush=True)
 
         self.git("init", f"--template={self.root / 'template'}", "--initial-branch=smoke")
@@ -82,9 +81,6 @@ def evaluate(workspace):
         return subprocess.run(["git", *args], cwd=self.project, text=True, capture_output=True, check=True).stdout
 
     def validate(self, cfg: config.Config):
-        assert_config(cfg.iterations >= 0, "Smoke iterations must be nonnegative")
-        assert_config(cfg.concurrency > 0, "Smoke concurrency must be positive")
-        assert_config(cfg.max_fix_attempts >= 0, "Smoke max_fix_attempts must be nonnegative")
         for value in (cfg.branch_base, cfg.workspace_base):
             assert_config(isinstance(value, str) and all(re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", part) for part in value.split("/")), "Smoke Git settings must use safe relative path components")
         result = subprocess.run(["git", "check-ref-format", "--branch", f"{cfg.branch_base}/smoke"], cwd=self.project, capture_output=True)
@@ -95,7 +91,7 @@ def evaluate(workspace):
         (self.project / ".gitignore").write_text(f"/{cfg.workspace_base}/\n")
         logging.log(logging.INFO, f"SMOKE: protected synthetic run in {self.root}")
 
-    def query(self, workspace: Path, model_name: str, prompt: str, extra_args: list[str]) -> subprocess.CompletedProcess:
+    def query(self, workspace: Path, model_name: str, prompt: str, extra_args: list[str]) -> subprocess.CompletedProcess[str]:
         assert_config(workspace.resolve().is_relative_to(self.project), "Smoke query escaped its temporary project")
         with self.lock:
             if workspace not in self.attempts:
@@ -164,12 +160,14 @@ def evaluate(workspace):
         logging.log(logging.INFO, message)
         print(message)
 
-def run(args: Namespace, run_core: Callable[[Namespace], int]) -> int:
+def run(args: Namespace, run_core: Callable[[config.Config, llm.AgentQuery], int]) -> int:
     with isolated_git():
         session = None
         try:
             session = SmokeSession(args)
-            exit_code = run_core(args)
+            cfg = config.Config(args)
+            session.validate(cfg)
+            exit_code = run_core(cfg, session.query)
             if exit_code == 0:
                 session.verify()
             return exit_code

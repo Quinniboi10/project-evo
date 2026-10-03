@@ -122,8 +122,8 @@ from project_evo import config
 import sqlite3
 import sys
 
-def run(args):
-    result = main.run(args)
+def run(cfg, query):
+    result = main._run(cfg, query)
     main.init_db() # Validate the existing database and its branches.
     if sys.argv[2] == "corrupt":
         with sqlite3.connect(config.cfg.db_file) as db:
@@ -178,14 +178,13 @@ sys.exit(smoke.run(args, run))
 class RoutingTests(unittest.TestCase):
     def setUp(self):
         cfg = SimpleNamespace(
-            args=SimpleNamespace(smoke=True, smoke_session=Mock()),
             exploration_model="explore", improvement_model="improve", fallback_model="fallback",
             adapter=lambda model: "codex", model_full_name=lambda model: model,
             extra_args=lambda model: [], max_concurrency=lambda model: 1,
             llm_timeout_sec=10,
         )
         self.cfg = cfg
-        self.query = cfg.args.smoke_session.query
+        self.query = Mock()
         self.query.return_value = subprocess.CompletedProcess(["smoke"], 0, "simulated", "")
         self.autocommit = Mock()
         self.codex = Mock()
@@ -197,10 +196,10 @@ class RoutingTests(unittest.TestCase):
     def test_tasks_adapters_and_fallback(self):
         for adapter in ("codex", "opencode"):
             self.cfg.adapter = lambda model: adapter
-            self.assertEqual(llm.run_agent(Path("workspace"), "prompt", Task.EXPLORE), "explore")
-            self.assertEqual(llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE), "improve")
+            self.assertEqual(llm.run_agent(Path("workspace"), "prompt", Task.EXPLORE, self.query), "explore")
+            self.assertEqual(llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE, self.query), "improve")
         llm.running_processes["explore"] = 1
-        self.assertEqual(llm.run_agent(Path("workspace"), "prompt", Task.EXPLORE), "fallback")
+        self.assertEqual(llm.run_agent(Path("workspace"), "prompt", Task.EXPLORE, self.query), "fallback")
         self.assertEqual(llm.running_processes["fallback"], 0)
         self.codex.assert_not_called()
         self.opencode.assert_not_called()
@@ -208,17 +207,16 @@ class RoutingTests(unittest.TestCase):
     def test_nonzero_timeout_and_unsupported_adapter(self):
         self.query.return_value = subprocess.CompletedProcess(["smoke"], 2, "out", "error")
         with self.assertRaises(KillWorkerException):
-            llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE)
+            llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE, self.query)
         self.query.side_effect = subprocess.TimeoutExpired("smoke", 10)
-        self.assertEqual(llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE), "improve")
+        self.assertEqual(llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE, self.query), "improve")
         self.cfg.adapter = lambda model: "unsupported"
         with self.assertRaises(KillPoolException):
-            llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE)
+            llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE, self.query)
         self.assertEqual(llm.running_processes["improve"], 0)
         self.assertEqual(self.autocommit.call_count, 3)
 
     def test_nonzero_agent_exit_is_worker_failure(self):
-        self.cfg.args.smoke = False
         for adapter, mock in (("codex", self.codex), ("opencode", self.opencode)):
             self.cfg.adapter = lambda model: adapter
             mock.return_value = subprocess.CompletedProcess([adapter], 1, "", "Selected model is at capacity")
@@ -232,19 +230,19 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(self.autocommit.call_count, 2)
 
     def test_normal_mode_uses_real_adapter_boundary(self):
-        self.cfg.args.smoke = False
+        llm.run_agent(Path("workspace"), "simulated", Task.IMPROVE, self.query)
         for adapter, mock in (("codex", self.codex), ("opencode", self.opencode)):
             self.cfg.adapter = lambda model: adapter
             mock.return_value = subprocess.CompletedProcess([adapter], 0, "out", "")
             llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE)
             mock.assert_called_once()
-        self.query.assert_not_called()
+        self.query.assert_called_once_with(Path("workspace"), "improve", "simulated", [])
 
     def test_adapter_lookup_failure_releases_provider(self):
         adapter = Mock(side_effect=KeyError("missing adapter"))
         self.cfg.adapter = adapter
         with self.assertRaisesRegex(KeyError, "missing adapter"):
-            llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE)
+            llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE, self.query)
         self.assertEqual(llm.running_processes["improve"], 0)
         self.query.assert_not_called()
         self.autocommit.assert_called_once_with(Path("workspace"))
@@ -252,16 +250,17 @@ class RoutingTests(unittest.TestCase):
     def test_commit_failure_still_releases_provider(self):
         self.autocommit.side_effect = KillWorkerException("commit failed")
         with self.assertRaisesRegex(KillWorkerException, "commit failed"):
-            llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE)
+            llm.run_agent(Path("workspace"), "prompt", Task.IMPROVE, self.query)
         self.assertEqual(llm.running_processes["improve"], 0)
 
-    def test_agent_requirements_are_skipped_only_in_smoke_mode(self):
+    def test_agent_requirements_depend_on_query_boundary(self):
         self.cfg.models = {"improve"}
         with patch("shutil.which", side_effect=lambda name: "/usr/bin/git" if name == "git" else None):
-            evolve.check_requirements()
-            self.cfg.args.smoke = False
+            evolve.check_requirements(require_agents=False)
             with self.assertRaises(KillPoolException):
                 evolve.check_requirements()
+        with patch("shutil.which", return_value=None), self.assertRaises(KillPoolException):
+            evolve.check_requirements(require_agents=False)
 
 class WorkerFailureTests(unittest.TestCase):
     def test_terminal_failure_cancels_queued_work_and_waits(self):
@@ -295,13 +294,14 @@ class WorkerFailureTests(unittest.TestCase):
                 worker = Mock(side_effect=[KillWorkerException("agent exited with status 1"), None])
                 write = Mock()
                 output = Mock()
+                query = Mock()
                 with patch.object(config, "cfg", cfg), patch.object(evolve, "select_island", return_value=2), patch.object(evolve, "run_worker", worker), patch.object(evolve.tqdm, "write", write), patch("builtins.print", output):
-                    self.assertEqual(evolve.run_iterations(), 0 if gnhf else 1)
+                    self.assertEqual(evolve.run_iterations(query), 0 if gnhf else 1)
                 action = "Starting a replacement worker." if gnhf else "Stopping the run."
                 write.assert_called_once_with(f"Warning: agent exited with status 1 {action}", file=sys.stderr)
                 output.assert_not_called()
                 self.assertEqual(worker.call_count, 2 if gnhf else 1)
-                self.assertTrue(all(call.args == (2,) for call in worker.call_args_list))
+                self.assertTrue(all(call.args == (2, query) for call in worker.call_args_list))
 
     def test_cancellation_while_waiting(self):
         cfg = SimpleNamespace(concurrency=1, iterations=1, island_count=4, gnhf=False)

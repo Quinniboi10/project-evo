@@ -102,7 +102,7 @@ class ActivityTests(unittest.TestCase):
         for error, answer, expected in ((errno.EADDRINUSE, "y", 0), (errno.EADDRINUSE, "n", 1), (errno.EADDRINUSE, EOFError(), 1), (errno.EACCES, "", 0)):
             prompt = Mock(side_effect=answer if isinstance(answer, Exception) else None, return_value=answer)
             work = Mock(return_value=0)
-            with patch.object(config, "cfg"), patch.object(config, "Config", return_value=SimpleNamespace(db_file=self.path)), patch.object(evolve, "check_requirements"), patch.object(evolve, "init_db"), patch.object(evolve, "run_iterations", work), patch.object(activity, "StatusServer", side_effect=OSError(error, "unavailable")), patch("builtins.input", prompt), redirect_stdout(StringIO()):
+            with patch.object(config, "cfg"), patch.object(config, "Config", return_value=SimpleNamespace(db_file=self.path, args=Namespace(status_port=49371, smoke=False), _confirm_providers=Mock())), patch.object(evolve, "check_requirements"), patch.object(evolve, "init_db"), patch.object(evolve, "run_iterations", work), patch.object(activity, "StatusServer", side_effect=OSError(error, "unavailable")), patch("builtins.input", prompt), redirect_stdout(StringIO()):
                 self.assertEqual(evolve.run(Namespace(status_port=49371)), expected)
                 self.assertEqual(work.call_count, int(expected == 0))
                 self.assertEqual(prompt.call_count, int(error == errno.EADDRINUSE))

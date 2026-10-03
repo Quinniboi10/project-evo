@@ -57,10 +57,10 @@ def build_parser(add_help: bool=True) -> argparse.ArgumentParser:
  
     return parser
 
-def check_requirements():
+def check_requirements(require_agents: bool=True):
     from shutil import which
     assert_config(which("git") is not None, "Git is required for workspaces to isolate code")
-    if config.cfg.args.smoke:
+    if not require_agents:
         return
     for adapter in set(config.cfg.adapter(m) for m in config.cfg.models):
         assert_config(which(adapter) is not None, f"The current configuration expects the command '{adapter}' but it cannot be found")
@@ -86,7 +86,7 @@ def init_db():
             for _, uuid in db.select(f"SELECT id, uuid FROM {db.PRIMARY_TABLE};"):
                 git.ensure_branch_exists(uuid)
 
-def run_worker(island_id: int):
+def run_worker(island_id: int, query: llm.AgentQuery|None=None):
     # Database connections must be held at the per-thread level (not shared)
     with closing(Database(config.cfg.db_file, island_count=config.cfg.island_count)) as db:
         parent = db.weighted_sample(island_id)
@@ -105,7 +105,7 @@ def run_worker(island_id: int):
             logging.log(logging.INFO, f"Island {island_id} attempt {child.uuid}, parent {parent.uuid}, inspirations {[row.uuid for row in references]}")
             inspirations, reference_ids = build_inspiration_context(parent, references)
             prompt = build_prompt(parent, child, inspirations)
-            child.model = llm.run_agent(workspace, prompt, task)
+            child.model = llm.run_agent(workspace, prompt, task, query)
 
             result = _evaluate(workspace)
             fixes = 0
@@ -113,7 +113,7 @@ def run_worker(island_id: int):
                 fixes += 1
                 logging.log(logging.INFO, f"Run UUID {child.uuid} failed verification, retrying ({fixes}/{config.cfg.max_fix_attempts})")
                 prompt = build_run_fix_prompt(parent, child, result.feedback)
-                llm.run_agent(workspace, prompt, task)
+                llm.run_agent(workspace, prompt, task, query)
                 result = _evaluate(workspace)
 
             if not result.passed:
@@ -137,7 +137,7 @@ def select_island() -> int:
     with closing(Database(config.cfg.db_file, island_count=config.cfg.island_count)) as db:
         return db.sample_island()
 
-def run_iterations() -> int:
+def run_iterations(query: llm.AgentQuery|None=None) -> int:
     global _idle_evaluator
     pool = ThreadPoolExecutor(max_workers=config.cfg.concurrency)
     pending_workers: dict[Future[None], int] = {}
@@ -151,7 +151,7 @@ def run_iterations() -> int:
             while iterations_to_submit > 0 or pending_workers:
                 while iterations_to_submit > 0 and len(pending_workers) < config.cfg.concurrency:
                     island_id = select_island()
-                    pending_workers[pool.submit(run_worker, island_id)] = island_id
+                    pending_workers[pool.submit(run_worker, island_id, query)] = island_id
                     iterations_to_submit -= 1
                 watched = list(pending_workers)
                 if _idle_evaluator is not None:
@@ -171,7 +171,7 @@ def run_iterations() -> int:
                             worker_failure_reported = True
                             raise
                         logging.log(logging.ERROR, f"A worker raised {type(e)}. {e}")
-                        pending_workers[pool.submit(run_worker, island_id)] = island_id # Keep replacements on the same island
+                        pending_workers[pool.submit(run_worker, island_id, query)] = island_id # Keep replacements on the same island
                     else:
                         pbar.update(1)
         if _idle_evaluator is not None:
@@ -199,9 +199,15 @@ def run_iterations() -> int:
     return 0
 
 def run(args: argparse.Namespace) -> int:
+    return _run(config.Config(args))
+
+def _run(cfg: config.Config, query: llm.AgentQuery|None=None) -> int:
     global _status_server
-    config.cfg = config.Config(args)
-    check_requirements()
+    config.cfg = cfg
+    args = cfg.args
+    if query is None:
+        cfg._confirm_providers()
+    check_requirements(require_agents=query is None)
     try:
         _status_server = activity.StatusServer(config.cfg.db_file, args.status_port)
     except OSError as error:
@@ -216,7 +222,7 @@ def run(args: argparse.Namespace) -> int:
                 return 1
     try:
         init_db()
-        return run_iterations()
+        return run_iterations(query)
     finally:
         if _status_server is not None:
             _status_server.close()
@@ -225,7 +231,7 @@ def run(args: argparse.Namespace) -> int:
 def execute(args: argparse.Namespace, parser: argparse.ArgumentParser) -> int:
     if args.smoke:
         from . import smoke
-        exit_code = smoke.run(args, run)
+        exit_code = smoke.run(args, _run)
     else:
         if args.project_path is None or args.eval_file is None or (args.objective is None and args.objective_file is None):
             parser.error("project_path, eval_file and --objective or --objective_file are required without --smoke")

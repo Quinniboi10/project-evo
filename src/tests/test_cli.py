@@ -89,7 +89,7 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(dashboard.DB_FILE, path.resolve())
                 serve_mock.assert_called_once_with()
                 with dashboard.app.test_client() as client:
-                    for url in ("/", "/dashboard/style.css", "/dashboard/fonts/plex-sans-regular.ttf"):
+                    for url in ("/", "/dashboard/style.css", "/dashboard/graph.js", "/dashboard/fonts/plex-sans-regular.ttf"):
                         with client.get(url) as response:
                             self.assertEqual(response.status_code, 200, url)
 

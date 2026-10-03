@@ -21,12 +21,12 @@ function fixture(count = 80, islands = 4) {
 
 async function checkGraph(page) {
     const state = await page.evaluate(() => {
-        const ids = visibleGraph.nodes.map(node => node.id).sort((a, b) => a - b);
+        const ids = view.graph.nodes.map(node => node.id).sort((a, b) => a - b);
         const actual = nodes.getIds().sort((a, b) => a - b);
         const rendered = [...network.body.nodeIndices].sort((a, b) => a - b);
-        const expectedEdges = visibleGraph.edges.map(edge => JSON.stringify([edge.from, edge.to])).sort();
+        const expectedEdges = view.graph.edges.map(edge => JSON.stringify([edge.from, edge.to])).sort();
         const positions = network.getPositions();
-        const expected = islandPositions();
+        const expected = islandPositions(fullGraph, view.graph.nodes);
         const misplaced = fullGraph.islands?.length ? ids.filter(id => positions[id]?.x !== expected.get(id)?.x || positions[id]?.y !== expected.get(id)?.y) : [];
         return { ids, actual, rendered, expectedEdges, actualEdges: edges.getIds().sort(), misplaced, updating: updatingGraph };
     });
@@ -42,7 +42,7 @@ async function run() {
         const pathname = new URL(request.url, "http://localhost").pathname;
         const file = pathname === "/" ? "dashboard/index.html" : pathname.slice(1);
         if (!file.startsWith("dashboard/") || file.includes("..")) { response.writeHead(404).end(); return; }
-        const types = { ".html": "text/html", ".css": "text/css", ".ttf": "font/ttf" };
+        const types = { ".js": "text/javascript", ".html": "text/html", ".css": "text/css", ".ttf": "font/ttf" };
         fs.readFile(path.join(root, file), (error, data) => {
             response.writeHead(error ? 404 : 200, { "Content-Type": types[path.extname(file)] || "application/octet-stream" });
             response.end(error ? "Not found" : data);
@@ -81,14 +81,14 @@ async function run() {
             const fit = await page.evaluate(() => {
                 const graph = document.getElementById("graph").getBoundingClientRect();
                 const container = document.getElementById("graph-container").getBoundingClientRect();
-                const baseline = visibleGraph.nodes.find(node => node.level === 0);
+                const baseline = view.graph.nodes.find(node => node.level === 0);
                 const point = network.canvasToDOM(network.getPositions([baseline.id])[baseline.id]);
                 return { gutter: graph.left - container.left, baselineX: point.x, width: graph.width };
             });
             assert.equal(fit.gutter, 112);
             assert.ok(fit.baselineX > 8 && fit.baselineX < fit.width, `Fit must keep the baseline visible beyond the fade: ${JSON.stringify(fit)}`);
             await page.evaluate(() => {
-                const baseline = visibleGraph.nodes.find(node => node.level === 0);
+                const baseline = view.graph.nodes.find(node => node.level === 0);
                 network.focus(baseline.id, { scale: 1, offset: { x: -document.getElementById("graph").clientWidth / 2 - 30, y: 0 }, animation: false });
                 updateNodeLabels();
                 drawBands();
@@ -119,7 +119,7 @@ async function run() {
         // Exercise synchronous changes faster than a frame, with hover callbacks active.
         await page.evaluate(() => {
             for (let i = 0; i < 60; i++) {
-                const id = visibleGraph.nodes.at(-1).id;
+                const id = view.graph.nodes.at(-1).id;
                 hoveredNodeId = id;
                 showPopup(id, { x: 100, y: 100 });
                 document.querySelector(`.island-card[data-island="${i % 4}"]`).click();
@@ -174,6 +174,7 @@ async function run() {
             await page.setViewportSize({ width, height });
             assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);
             assert.ok(await page.locator("#graph").evaluate(element => element.getBoundingClientRect().height) > 200);
+            if (width === 390) await page.screenshot({ path: "/tmp/evo-dashboard-mobile.png" });
         }
         await page.locator("#inspect-toggle").click();
         assert.equal(await page.locator("#attempt-select").evaluate(element => element === document.activeElement), true);
@@ -186,7 +187,7 @@ async function run() {
         await page.evaluate(() => { selectAttempt(null); selectedIsland = null; });
         for (const next of [fixture(0), { nodes: [], edges: [], islands: [] }, fixture(1000, 20), fixture()]) {
             snapshot = next;
-            await page.evaluate(graph => { receiveGraph(graph); step.value = step.max; showAttempt(); }, snapshot);
+            await page.evaluate(graph => { receiveGraph(graph); timelineStep = Number(step.max); showAttempt(); }, snapshot);
             await checkGraph(page);
             if (snapshot.nodes.length > 1000) {
                 await page.emulateMedia({ reducedMotion: "reduce" });
@@ -196,7 +197,7 @@ async function run() {
                 assert.equal(await page.evaluate(() => nodes.get().every(node => node.label === "")), true, "Overview must treat baseline and best labels like all other nodes");
                 await page.locator("#best").click();
                 assert.equal(await page.evaluate(() => nodes.get().every(node => node.label.length > 0)), true, "Detail zoom must reveal every node label");
-                assert.equal(await page.evaluate(() => nodes.get(best.id).font.size * network.getScale()), 12, "Instant focusing must not magnify overview labels");
+                assert.equal(await page.evaluate(() => nodes.get(view.best.id).font.size * network.getScale()), 12, "Instant focusing must not magnify overview labels");
                 await page.locator("#attempt-select").selectOption("2");
                 assert.equal(await page.evaluate(() => nodes.get(2).font.size * network.getScale()), 12);
                 await page.locator("#clear-selection").click();
@@ -225,7 +226,7 @@ async function run() {
         await page.screenshot({ path: "/tmp/evo-active-desktop.png" });
         await page.emulateMedia({ reducedMotion: "reduce" });
         assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector(".active-ring")).animationName), "none");
-        await page.evaluate(() => { step.value = 0; showAttempt(); });
+        await page.evaluate(() => { timelineStep = 0; showAttempt(); });
         assert.equal(await page.locator(".active-ring").count(), 0);
         await page.locator("#latest").click();
         await page.locator('.island-card[data-island="1"]').click();
@@ -253,7 +254,7 @@ async function run() {
         snapshot = fixture(5, 1);
         snapshot.nodes.forEach(node => { node.level = node.id === 1 ? 0 : node.id <= 3 ? 1 : 2; });
         snapshot.edges = [{ from: 1, to: 2 }, { from: 1, to: 3 }, { from: 3, to: 4 }, { from: 2, to: 5 }, { from: 2, to: 6 }];
-        await page.evaluate(graph => { receiveGraph(graph); chooseIsland(null); step.value = step.max; showAttempt(); }, snapshot);
+        await page.evaluate(graph => { receiveGraph(graph); chooseIsland(null); timelineStep = Number(step.max); showAttempt(); }, snapshot);
         await checkGraph(page);
         assert.deepEqual(await page.evaluate(() => [4, 5, 6].sort((a, b) => network.getPositions()[a].y - network.getPositions()[b].y)), [5, 6, 4]);
         await page.locator("#fit").click();

@@ -67,11 +67,11 @@
     </div>
     <div id="node-popup" role="tooltip" hidden><strong id="popup-name"></strong><div id="popup-score"></div><div id="popup-island"></div><div id="popup-inspirations"></div></div>
 
+    <script src="/dashboard/graph.js"></script>
     <script>
         let network = null;
         let nodes;
         let edges;
-        let best = null;
         let selectedNodeId = null;
         let hoveredNodeId = null;
         let lastSnapshot = null;
@@ -81,7 +81,8 @@
         let activeNodes = [];
         let activityAvailable = false;
         let selectedIsland = null;
-        let timelineNodes = [];
+        let timelineStep = 0;
+        let replaying = false;
         const styles = getComputedStyle(document.documentElement);
         const theme = Object.fromEntries(["canvas", "panel", "text", "muted", "border", "line", "accent", "positive"].map(name => [name, styles.getPropertyValue(`--${name}`).trim()]));
         const islandColors = Array.from({ length: 8 }, (_, id) => styles.getPropertyValue(`--island-${id}`).trim());
@@ -89,7 +90,7 @@
         const animate = () => !reducedMotion.matches;
         const inspector = document.getElementById("inspector");
         const attemptSelect = document.getElementById("attempt-select");
-        let visibleGraph = { nodes: [], edges: [] };
+        let view = deriveView(fullGraph, activeNodes, { island: selectedIsland, step: 0, replaying: false });
         let rowData = null;
         let updatingGraph = false;
         let orderedLayout = null;
@@ -113,7 +114,7 @@
         }
 
         function showPopup(id, point) {
-            const node = visibleGraph.nodes.find(node => node.id === id);
+            const node = view.graph.nodes.find(node => node.id === id);
             if (!node) return;
             popupNodeId = id;
             document.getElementById("popup-name").textContent = node.active ? node.name : `#${id} · ${node.name}`;
@@ -154,14 +155,13 @@
         }
 
         function updateInspector() {
-            const node = visibleGraph.nodes.find(node => node.id === selectedNodeId);
+            const node = view.graph.nodes.find(node => node.id === selectedNodeId);
             document.getElementById("inspector-empty").hidden = Boolean(node);
             document.getElementById("inspector-content").hidden = !node;
             attemptSelect.value = node ? String(node.id) : "";
             if (!node) return;
-            const parent = visibleGraph.edges.find(edge => edge.to === node.id);
-            const roots = new Set(fullGraph.edges.map(edge => edge.to));
-            const baseline = fullGraph.nodes.find(item => !roots.has(item.id));
+            const parent = view.graph.edges.find(edge => edge.to === node.id);
+            const baseline = view.snapshotBaseline;
             document.getElementById("row-heading").textContent = node.active ? "In-progress attempt" : `Attempt #${node.id}`;
             document.getElementById("attempt-name").textContent = node.name;
             document.getElementById("attempt-score").textContent = node.active ? "Unscored" : node.score.toLocaleString("en-US", { maximumSignificantDigits: 21 });
@@ -176,7 +176,7 @@
         }
 
         function selectAttempt(id) {
-            selectedNodeId = visibleGraph.nodes.some(node => node.id === id) ? id : null;
+            selectedNodeId = view.graph.nodes.some(node => node.id === id) ? id : null;
             rowRequest?.abort();
             rowRequest = null;
             rowData = null;
@@ -185,8 +185,8 @@
             if (network) updateSelection();
             if (selectedNodeId !== null) {
                 setInspectorOpen(true);
-                if (visibleGraph.nodes.find(node => node.id === selectedNodeId)?.active) {
-                    document.getElementById("row-values").textContent = JSON.stringify(visibleGraph.nodes.find(node => node.id === selectedNodeId), null, 2);
+                if (view.graph.nodes.find(node => node.id === selectedNodeId)?.active) {
+                    document.getElementById("row-values").textContent = JSON.stringify(view.graph.nodes.find(node => node.id === selectedNodeId), null, 2);
                     document.getElementById("row-status").textContent = "Active includes evaluation and repairs; it does not indicate recent agent output.";
                     document.getElementById("retry-row").hidden = true;
                 } else loadRow(selectedNodeId);
@@ -242,7 +242,7 @@
         };
         attemptSelect.onchange = () => {
             hidePopup();
-            selectAttempt(visibleGraph.nodes.find(node => String(node.id) === attemptSelect.value)?.id ?? null);
+            selectAttempt(view.graph.nodes.find(node => String(node.id) === attemptSelect.value)?.id ?? null);
             if (selectedNodeId !== null) network.focus(selectedNodeId, { scale: 1, animation: animate() });
             updateNodeLabels();
         };
@@ -304,15 +304,14 @@
         };
 
         function updateOverview() {
-            const islands = [...(fullGraph.islands ?? [])].sort((a, b) => a - b);
+            const islands = view.islands;
             overview.hidden = islands.length === 0;
             document.getElementById("legacy-note").hidden = islands.length !== 0 || !fullGraph.nodes.length;
             document.getElementById("island-count").textContent = String(islands.length);
             const existing = new Map([...overview.children].map(button => [button.dataset.island, button]));
-            const parentIds = new Set(fullGraph.edges.map(edge => edge.to));
             const selector = document.getElementById("island-select");
             selector.replaceChildren();
-            for (const island of [null, ...islands]) {
+            for (const { island, attempts, champion, baseline } of view.populations) {
                 const key = island === null ? "all" : String(island);
                 const label = island === null ? "All populations" : `Island ${island}`;
                 const option = document.createElement("option");
@@ -333,10 +332,6 @@
                 button.style.setProperty("--island-color", island === null ? theme.muted : islandColor(island));
                 button.setAttribute("aria-pressed", String(selectedIsland === island));
                 button.firstChild.textContent = label;
-                const members = timelineNodes.filter(node => island === null || node.island_ids?.includes(island));
-                const attempts = members.filter(node => parentIds.has(node.id)).length;
-                const champion = members.reduce((best, node) => !best || node.score > best.score ? node : best, null);
-                const baseline = members.find(node => !parentIds.has(node.id));
                 const count = document.createElement("span");
                 count.textContent = `${attempts} attempts`;
                 const ratio = document.createElement("span");
@@ -365,7 +360,7 @@
             const positions = network.getPositions();
             for (const island of fullGraph.islands) {
                 if (selectedIsland !== null && selectedIsland !== island) continue;
-                const members = visibleGraph.nodes.filter(node => node.level > 0 && node.island_ids?.length === 1 && node.island_ids[0] === island && positions[node.id]);
+                const members = view.graph.nodes.filter(node => node.level > 0 && node.island_ids?.length === 1 && node.island_ids[0] === island && positions[node.id]);
                 if (!members.length) continue;
                 const top = Math.min(...members.map(node => network.canvasToDOM(positions[node.id]).y));
                 if (top < 0 || top > bands.clientHeight - 32) continue;
@@ -380,7 +375,7 @@
             overlay.replaceChildren();
             const activeNodeId = popupNodeId ?? selectedNodeId;
             if (!network || activeNodeId === null) return;
-            const target = timelineNodes.find(node => node.id === activeNodeId);
+            const target = view.timelineNodes.find(node => node.id === activeNodeId);
             if (!target || !target.inspiration_ids?.length || !nodes.get(target.id)) return;
             const defs = svgElement("defs", {});
             const marker = svgElement("marker", { id: "inspiration-arrow", viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse" });
@@ -388,7 +383,7 @@
             defs.append(marker);
             overlay.append(defs);
             const targetPoint = network.canvasToDOM(network.getPositions([target.id])[target.id]);
-            const available = new Map(timelineNodes.map(node => [node.id, node]));
+            const available = new Map(view.timelineNodes.map(node => [node.id, node]));
             const references = target.inspiration_ids.map(id => available.get(id)).filter(Boolean);
             const outsiders = references.filter(reference => !nodes.get(reference.id));
             const width = overlay.clientWidth;
@@ -436,19 +431,15 @@
             updatingGraph = true;
             try {
                 hidePopup();
-                timelineNodes = fullGraph.nodes.slice(0, Number(step.value) + 1);
-                const visibleNodes = timelineNodes.filter(node => selectedIsland === null || node.island_ids?.includes(selectedIsland));
-                const liveNodes = Number(step.value) === Number(step.max) && replayTimer === null
-                    ? activeNodes.filter(node => selectedIsland === null || node.island_ids.includes(selectedIsland)) : [];
-                visibleNodes.push(...liveNodes);
-                const visibleIds = new Set(visibleNodes.map(node => node.id));
-                document.getElementById("step-label").textContent = `${step.value} / ${step.max}`;
+                view = deriveView(fullGraph, activeNodes, { island: selectedIsland, step: timelineStep, replaying });
+                const visibleNodes = view.graph.nodes;
+                const lastStep = Math.max(0, fullGraph.nodes.length - 1);
+                step.max = lastStep;
+                step.value = timelineStep;
+                step.disabled = replayButton.disabled = fullGraph.nodes.length < 2;
+                replayButton.textContent = replaying ? "Pause" : "Replay";
+                document.getElementById("step-label").textContent = `${timelineStep} / ${lastStep}`;
                 updateOverview();
-                visibleGraph = {
-                    nodes: visibleNodes,
-                    edges: [...fullGraph.edges, ...liveNodes.map(node => ({ from: node.parent_id, to: node.id, label: node.task }))]
-                        .filter(edge => visibleIds.has(edge.from) && visibleIds.has(edge.to))
-                };
                 attemptSelect.replaceChildren();
                 const placeholder = document.createElement("option");
                 placeholder.value = "";
@@ -460,11 +451,12 @@
                     option.textContent = node.active ? node.name : `#${node.id} · ${node.name}`;
                     attemptSelect.append(option);
                 }
-                if (selectedNodeId !== null && !visibleIds.has(selectedNodeId)) selectAttempt(null);
+                const selected = visibleNodes.find(node => node.id === selectedNodeId || (node.uuid && `active:${node.uuid}` === selectedNodeId));
+                if (selectedNodeId !== null && selected?.id !== selectedNodeId) selectAttempt(selected?.id ?? null);
                 document.getElementById("scope-label").textContent = selectedIsland === null ? "All populations" : `Island ${selectedIsland}`;
-                document.getElementById("scope-time").textContent = Number(step.value) === Number(step.max) ? "Latest snapshot" : `History · ${step.value} / ${step.max}`;
-                document.getElementById("latest").disabled = !fullGraph.nodes.length || (replayTimer === null && Number(step.value) === Number(step.max));
-                renderGraph(visibleGraph);
+                document.getElementById("scope-time").textContent = timelineStep === Math.max(0, fullGraph.nodes.length - 1) ? "Latest snapshot" : `History · ${timelineStep} / ${lastStep}`;
+                document.getElementById("latest").disabled = !fullGraph.nodes.length || (!replaying && timelineStep === Math.max(0, fullGraph.nodes.length - 1));
+                renderGraph();
             } finally {
                 updatingGraph = false;
             }
@@ -475,16 +467,9 @@
             updateInspector();
         }
 
-        function receiveGraph(graph) {
-            hidePopup();
-            // Keep a replay's timeline fixed while live snapshots arrive.
-            if (replayTimer !== null) {
-                pendingGraph = graph;
-                return;
-            }
-            const followLatest = !fullGraph.nodes.length || Number(step.value) === Number(step.max);
-            const viewedId = fullGraph.nodes[Number(step.value)]?.id;
-            const selectedActive = activeNodes.find(node => node.id === selectedNodeId);
+        function acceptGraph(graph) {
+            const followLatest = !fullGraph.nodes.length || timelineStep === Math.max(0, fullGraph.nodes.length - 1);
+            const viewedId = fullGraph.nodes[timelineStep]?.id;
             fullGraph = { ...graph, nodes: [...graph.nodes].sort((a, b) => a.id - b.id) };
             activityAvailable = Array.isArray(graph.active);
             const saved = new Set(graph.nodes.map(node => node.uuid));
@@ -495,49 +480,56 @@
                     level: parent.level + 1, island_ids: [node.island_id], score: null, inspiration_ids: [] }] : [];
             });
             if (selectedIsland !== null && !fullGraph.islands?.includes(selectedIsland)) selectedIsland = null;
-            step.max = Math.max(0, fullGraph.nodes.length - 1);
             const viewedIndex = fullGraph.nodes.findIndex(node => node.id === viewedId);
-            step.value = followLatest ? step.max : Math.max(0, viewedIndex);
-            step.disabled = replayButton.disabled = fullGraph.nodes.length < 2;
+            timelineStep = followLatest ? Math.max(0, fullGraph.nodes.length - 1) : Math.max(0, viewedIndex);
+        }
+
+        function receiveGraph(graph) {
+            hidePopup();
+            // Keep a replay's timeline fixed while live snapshots arrive.
+            if (replaying) {
+                pendingGraph = graph;
+                return;
+            }
+            acceptGraph(graph);
             showAttempt();
-            const completed = selectedActive && graph.nodes.find(node => node.uuid === selectedActive.uuid);
-            if (completed && visibleGraph.nodes.some(node => node.id === completed.id)) selectAttempt(completed.id);
         }
 
         function stopReplay() {
             clearInterval(replayTimer);
             replayTimer = null;
-            replayButton.textContent = "Replay";
+            replaying = false;
             if (pendingGraph) {
                 const graph = pendingGraph;
                 pendingGraph = null;
-                receiveGraph(graph);
+                acceptGraph(graph);
             }
         }
 
         document.getElementById("latest").onclick = () => {
             stopReplay();
-            step.value = step.max;
+            timelineStep = Math.max(0, fullGraph.nodes.length - 1);
             showAttempt();
         };
 
         step.addEventListener("input", () => {
+            timelineStep = Number(step.value);
             stopReplay();
             showAttempt();
         });
         replayButton.onclick = () => {
-            if (replayTimer !== null) {
+            if (replaying) {
                 stopReplay();
+                showAttempt();
                 return;
             }
             if (fullGraph.nodes.length < 2) return;
             hidePopup();
-            step.value = 0;
+            timelineStep = 0;
+            replaying = true;
             showAttempt();
-            replayButton.textContent = "Pause";
-            document.getElementById("latest").disabled = false;
             const started = performance.now();
-            const finalStep = Number(step.max);
+            const finalStep = fullGraph.nodes.length - 1;
             replayTimer = setInterval(() => {
                 const elapsed = Math.min(10, (performance.now() - started) / 1000);
                 // Two-second speed ramps, with steady speed for the middle six seconds.
@@ -548,11 +540,11 @@
                         ? 1 - (10 - elapsed) ** 2 / 32
                         : (elapsed - 1) / 8;
                 const nextStep = Math.floor(progress * finalStep);
-                if (nextStep !== Number(step.value)) {
-                    step.value = nextStep;
+                if (nextStep !== timelineStep || progress === 1) {
+                    timelineStep = nextStep;
+                    if (progress === 1) stopReplay();
                     showAttempt();
                 }
-                if (progress === 1) { stopReplay(); showAttempt(); }
             }, 50);
         };
 
@@ -589,49 +581,9 @@
             if (activeNodes.some(node => node.id === selectedNodeId)) updateInspector();
         }
 
-        function islandPositions() {
-            const positions = new Map();
-            let top = 0;
-            const layoutNodes = [...fullGraph.nodes, ...visibleGraph.nodes.filter(node => node.active)];
-            const parents = new Map(fullGraph.edges.map(edge => [edge.to, edge.from]));
-            for (const node of layoutNodes.filter(node => node.active)) parents.set(node.id, node.parent_id);
-            // Use the complete snapshot so replay reveals nodes without reordering islands.
-            for (const island of [...(fullGraph.islands ?? [])].sort((a, b) => a - b)) {
-                const levels = new Map();
-                for (const node of layoutNodes) {
-                    if (node.level === 0 || node.island_ids?.length !== 1 || node.island_ids[0] !== island) continue;
-                    if (!levels.has(node.level)) levels.set(node.level, []);
-                    levels.get(node.level).push(node);
-                }
-                const rows = Math.max(1, ...[...levels.values()].map(layer => layer.length));
-                for (const [level, layer] of [...levels].sort((a, b) => a[0] - b[0])) {
-                    // Keep families in parent order to avoid crossings between generations.
-                    layer.sort((a, b) => (positions.get(parents.get(a.id))?.y ?? 0) - (positions.get(parents.get(b.id))?.y ?? 0)
-                        || Number(Boolean(a.active)) - Number(Boolean(b.active)) || (a.active ? a.id.localeCompare(b.id) : a.id - b.id));
-                    layer.forEach((node, index) => positions.set(node.id, {
-                        x: level * 230, y: top + (rows - layer.length) * 50 + index * 100
-                    }));
-                }
-                top += rows * 100 + 100;
-            }
-            for (const node of layoutNodes) {
-                if (!positions.has(node.id)) positions.set(node.id, { x: node.level * 230, y: Math.max(0, top - 200) / 2 });
-            }
-            return positions;
-        }
-
-        function renderGraph(graph) {
-
-            best = graph.nodes.reduce((best, node) =>
-                Number.isFinite(node.score) && (!best || node.score > best.score)
-                    ? node : best, null);
-            const parents = new Map(graph.edges.map(edge => [edge.to, edge.from]));
-            const roots = graph.nodes.filter(node => !parents.has(node.id));
-            const baseline = roots.length === 1 ? roots[0] : null;
-            const ratio = best && baseline && baseline.score !== 0
-                ? best.score / baseline.score : NaN;
-            const attempts = graph.nodes.filter(node => !node.active).length - roots.length;
-            const parentsExplored = new Set(graph.edges.filter(edge => typeof edge.to === "number").map(edge => edge.from)).size;
+        function renderGraph() {
+            const graph = view.graph;
+            const { best, baseline, ratio, attempts, parentsExplored, bestPath, positions } = view;
             document.getElementById("best-score").textContent = best?.score_label ?? "—";
             document.getElementById("best-ratio").textContent = Number.isFinite(ratio) ? formatSpeedup(ratio) : "—";
             document.getElementById("best-id").textContent = best ? `Attempt #${best.id}` : "No attempts yet";
@@ -639,16 +591,8 @@
             document.getElementById("summary").textContent = graph.nodes.length ? `${parentsExplored} parents explored · ${graph.nodes.length} nodes` : "Waiting for the first candidate";
             document.getElementById("graph-empty").hidden = graph.nodes.length > 0;
             document.getElementById("empty-message").textContent = "The lineage will appear when a baseline is recorded.";
-            const bestPath = new Set();
-            let ancestor = best?.id;
-            while (ancestor !== undefined && !bestPath.has(ancestor)) {
-                bestPath.add(ancestor);
-                ancestor = parents.get(ancestor);
-            }
-
             const orderedIslands = Boolean(fullGraph.islands?.length);
             document.getElementById("graph-container").dataset.islands = String(orderedIslands);
-            const positions = orderedIslands ? islandPositions() : new Map();
             const nextNodes = graph.nodes.map(node => {
                 const isBest = node.id === best?.id;
                 const onPath = bestPath.has(node.id);
@@ -702,9 +646,6 @@
                 }
                 nodes.update(nextNodes);
                 edges.update(nextEdges);
-                if (!nodeIds.has(selectedNodeId)) selectedNodeId = null;
-                if (!nodeIds.has(hoveredNodeId)) hidePopup();
-                updateSelection();
                 if (rootBefore) {
                     // Let the visible tree reflow, but keep its root at the same screen pixel.
                     const rootAfter = network.getPositions([baseline.id])[baseline.id];
@@ -808,6 +749,7 @@
                 updateNodeLabels();
             };
             bestButton.onclick = () => {
+                const best = view.best;
                 if (!best) return;
                 hoveredNodeId = null;
                 selectAttempt(best.id);
@@ -825,7 +767,7 @@
             const detail = network.getScale() >= 0.7;
             const fontSize = 12 / network.getScale();
             const updates = [];
-            for (const node of visibleGraph.nodes) {
+            for (const node of view.graph.nodes) {
                 const show = detail || node.id === selectedNodeId || node.id === hoveredNodeId;
                 const label = show ? node.active ? node.name : node.level === 0 ? `Baseline · ${node.score_label}` : `#${node.id} · ${node.score_label}` : "";
                 const rendered = nodes.get(node.id);
@@ -839,7 +781,7 @@
             const rings = document.getElementById("active-overlay");
             rings.replaceChildren();
             const positions = network.getPositions();
-            for (const node of visibleGraph.nodes.filter(node => node.active)) {
+            for (const node of view.graph.nodes.filter(node => node.active)) {
                 const point = network.canvasToDOM(positions[node.id]);
                 rings.append(svgElement("circle", { cx: point.x, cy: point.y, r: 11 * network.getScale(),
                     class: activityAvailable ? "active-ring pulsing" : "active-ring" }));
@@ -869,8 +811,8 @@
                 isLive = false;
                 lastSnapshot = null;
                 activityAvailable = false;
-                activeNodes.forEach(node => { node.name = `Status unknown · ${node.task.toLowerCase()}`; });
-                if (network) { updateNodeLabels(); updateInspector(); drawActive(); }
+                activeNodes = activeNodes.map(node => ({ ...node, name: `Status unknown · ${node.task.toLowerCase()}` }));
+                if (network) showAttempt();
                 // Keep the last successful graph and retry without interrupting navigation.
                 if (!network) {
                     document.getElementById("summary").textContent = "Waiting for server…";
