@@ -50,6 +50,7 @@ class Config:
         assert_config(type(self.island_count) is int and self.island_count > 0, "general.island_count must be a positive integer")
         probability = self.cross_island_inspiration_probability
         assert_config(type(probability) in (int, float) and math.isfinite(probability) and 0 <= probability <= 1, "general.cross_island_inspiration_probability must be finite and between 0 and 1")
+        assert_config((type(self.exploration_probability) is float or type(self.exploration_probability) is int) and (0 <= self.exploration_probability <= 1), "general.exploration_probability must be on [0, 1]")
 
         max_concurrency = 0
         for model in self._routing.values():
@@ -83,7 +84,7 @@ class Config:
 
 
     def _set_attributes(self):
-        self.project_root                                  = Path(self.args.project_path).resolve(strict=True)
+        self.project_root = Path(self.args.project_path).resolve(strict=True)
         loader = SourceFileLoader("_workspace_eval_module", self.args.eval_file)
         spec = spec_from_loader(loader.name, loader)
         assert spec is not None
@@ -112,6 +113,8 @@ class Config:
 
         self.island_count = self.config["general"].get("island_count", 4)
         self.cross_island_inspiration_probability = self.config["general"].get("cross_island_inspiration_probability", 0.1)
+
+        self.exploration_probability = self.config["general"]["exploration_probability"]
 
         self.branch_base    = self.config["git"]["branch_base"]
         self.workspace_base = self.config["git"]["workspace_base"]

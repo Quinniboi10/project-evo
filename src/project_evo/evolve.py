@@ -92,7 +92,7 @@ def run_worker(island_id: int, query: llm.AgentQuery|None=None):
         parent = db.weighted_sample(island_id)
         assert type(parent) == PrimaryTableRow
 
-        task = Task.EXPLORE if random.random() < 0.3 else Task.IMPROVE # TODO: smarter exploration
+        task = Task.EXPLORE if random.random() < config.cfg.exploration_probability else Task.IMPROVE
 
         child = PrimaryTableRow.create_new_child(parent, task)
         workspace = None

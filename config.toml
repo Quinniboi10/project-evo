@@ -1,17 +1,18 @@
 [general]
 temperature = 0.05 # Softmax temperature to use when selecting what to explore
-concurrency = 5    # Number of concurrent threads to run
+concurrency = 5 # Number of concurrent threads to run
 evaluation_concurrency = 1 # Maximum simultaneous evaluator calls; defaults to concurrency if omitted
 reevaluate_idle = false # Re-measure saved attempts when evaluation slots are idle
 inspiration_count = 2 # Maximum reference attempts per prompt; 0 disables inspiration
 island_count = 4 # Independent populations sharing the worker pool; fixed when resuming
 cross_island_inspiration_probability = 0.1 # Chance of reserving one reference for a foreign elite
+exploration_probability = 0.3 # Chance of a new node exploring instead of improving
 
-max_fix_attempts = 3     # Maximum number of times to allow the LLM to try to fix a workspace
+max_fix_attempts = 3 # Maximum number of times to allow the LLM to try to fix a workspace
 llm_timeout_sec  = 10800 # Maximum time to wait before killing the LLM
 
 [git]
-branch_base = "project-evo"   # Git branches will be {base}/{uuid}
+branch_base = "project-evo" # Git branches will be {base}/{uuid}
 workspace_base = "workspaces" # Git workspaces will be {project root}/{base}/{uuid}
 
 [providers.astra]
