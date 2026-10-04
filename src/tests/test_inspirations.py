@@ -125,7 +125,7 @@ class InspirationDiffTests(unittest.TestCase):
 
 class InspirationPromptTests(unittest.TestCase):
     def setUp(self):
-        self.cfg = SimpleNamespace(island_count=1, branch_base="evo", objective="Make the program faster", inspiration_count=3, cross_island_inspiration_probability=0.1)
+        self.cfg = SimpleNamespace(island_count=1, exploration_probability=0.3, branch_base="evo", objective="Make the program faster", inspiration_count=3, cross_island_inspiration_probability=0.1)
         context = patch.object(config, "cfg", self.cfg)
         context.start()
         self.addCleanup(context.stop)

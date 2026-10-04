@@ -45,9 +45,21 @@ Build with `python3 -m pip install build` and `python3 -m build`. Install with `
 
 Version 1.11.0 changes imports from `src` to `project_evo`: evaluators should use `from project_evo.evaluation import EvaluationResult`; module commands use `python3 -m project_evo.main`. For checkout development and tests, install with `python3 -m pip install -e .` first.
 
+## Development checks
+
+On Linux/macOS, create `.venv` with Python 3.14+ and enable commit checks once per checkout:
+
+```bash
+python3.14 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/pre-commit install
+```
+
+Each commit runs the unittest suite, a 12-attempt simulated smoke run, and Pyright on staged Python files (warnings also block commits). Run `.venv/bin/pre-commit run --all-files` manually to check the whole checkout. Smoke runs retain diagnostic artifacts in the printed temporary directory.
+
 ## Exploration and inspiration
 
-Each attempt starts from one "parent" workspace. Exploration (30%) tries alternative approaches; improvement refines the current implementation.
+Each attempt starts from one "parent" workspace. Exploration tries alternative approaches; improvement refines the current implementation. Set `[general].exploration_probability` from `0` (always improve) to `1` (always explore); omitted settings default to `0.3`.
 
 - Set `[general].inspiration_count` in `config.toml` to limit reference attempts per prompt (`0` to disable). This number must be nonnegative.
 - `[general].island_count` controls the number of islands to search; islands share the worker budget and select parents locally. Set `1` for a single population.

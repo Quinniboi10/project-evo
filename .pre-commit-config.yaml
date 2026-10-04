@@ -1,0 +1,22 @@
+minimum_pre_commit_version: "4.4.0"
+repos:
+  - repo: local
+    hooks:
+      - id: unittest
+        name: Python test suite
+        entry: .venv/bin/python -m unittest discover -s src/tests -v
+        language: unsupported
+        pass_filenames: false
+        always_run: true
+      - id: smoke
+        name: Simulated evolution smoke run
+        entry: .venv/bin/python -m project_evo.main run --smoke -i 12 --debug
+        language: unsupported
+        pass_filenames: false
+        always_run: true
+      - id: pyright
+        name: Pyright (staged Python files)
+        entry: .venv/bin/python -m pyright --pythonpath .venv/bin/python --pythonversion 3.14 --warnings
+        language: unsupported
+        types: [python]
+        require_serial: true

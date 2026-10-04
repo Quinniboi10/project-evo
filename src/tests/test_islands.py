@@ -136,6 +136,7 @@ class IslandConfigTests(unittest.TestCase):
         cfg.softmax_temp = 0.05
         cfg.objective = "test"
         cfg.inspiration_count = 2
+        cfg.exploration_probability = 0.3
         cfg._routing = {"fallback": "test"}
         cfg.concurrency = 1
         cfg.iterations = 1

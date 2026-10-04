@@ -310,16 +310,21 @@ class WorkerFailureTests(unittest.TestCase):
 
     def test_workspace_cleanup_on_evaluation_error(self):
         from project_evo.database import PrimaryTableRow
-        cfg = SimpleNamespace(db_file="unused", island_count=1, inspiration_count=2, cross_island_inspiration_probability=0.1, evaluation_semaphore=BoundedSemaphore(1), eval_fn=Mock(side_effect=RuntimeError("evaluation failed")))
-        parent = PrimaryTableRow("Baseline", "baseline", None, None, None, 1)
-        parent.id = 1
-        with patch.object(config, "cfg", cfg), patch.object(evolve, "Database") as database, patch.object(git, "create_new_workspace", return_value=Path("workspace")), patch.object(git, "delete_workspace") as cleanup, patch.object(llm, "run_agent"), patch.object(evolve, "build_prompt", return_value="prompt"):
-            database.return_value.weighted_sample.return_value = parent
-            database.return_value.sample_inspirations.return_value = []
-            with self.assertRaisesRegex(RuntimeError, "evaluation failed"):
-                evolve.run_worker(0)
-            cleanup.assert_called_once_with(Path("workspace"))
-            database.return_value.insert_attempt.assert_not_called()
+        cases = ((0, 0, Task.IMPROVE), (1, 0.999, Task.EXPLORE), (0.7, 0.6, Task.EXPLORE), (0.7, 0.7, Task.IMPROVE))
+        for probability, draw, task in cases:
+            with self.subTest(probability=probability, draw=draw):
+                cfg = SimpleNamespace(db_file="unused", island_count=1, exploration_probability=probability, inspiration_count=2, cross_island_inspiration_probability=0.1, evaluation_semaphore=BoundedSemaphore(1), eval_fn=Mock(side_effect=RuntimeError("evaluation failed")))
+                parent = PrimaryTableRow("Baseline", "baseline", None, None, None, 1)
+                parent.id = 1
+                route = Mock()
+                with patch.object(config, "cfg", cfg), patch.object(evolve, "Database") as database, patch.object(git, "create_new_workspace", return_value=Path("workspace")), patch.object(git, "delete_workspace") as cleanup, patch.object(llm, "run_agent", route), patch.object(evolve, "build_prompt", return_value="prompt"), patch.object(evolve.random, "random", return_value=draw):
+                    database.return_value.weighted_sample.return_value = parent
+                    database.return_value.sample_inspirations.return_value = []
+                    with self.assertRaisesRegex(RuntimeError, "evaluation failed"):
+                        evolve.run_worker(0)
+                    route.assert_called_once_with(Path("workspace"), "prompt", task, None)
+                    cleanup.assert_called_once_with(Path("workspace"))
+                    database.return_value.insert_attempt.assert_not_called()
 
     def test_git_environment_restored_on_failure(self):
         with patch.dict(os.environ, {"GIT_DIR": "original", "GIT_CONFIG_COUNT": "2"}):

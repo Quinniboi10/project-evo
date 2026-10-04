@@ -2,7 +2,7 @@ from project_evo.database import Database, PrimaryTableRow
 from project_evo.error import DatabaseException, EvalError
 from project_evo.reevaluation import IdleEvaluator
 from project_evo.task import Task
-from project_evo import config, evolve, git
+from project_evo import config, evolve, git, smoke
 
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing, contextmanager
@@ -230,6 +230,9 @@ class ReevaluationTests(unittest.TestCase):
         self.assertEqual(self.path.read_bytes(), before)
 
     def test_detached_worktree_preserves_saved_and_active_files(self):
+        isolated = smoke.isolated_git()
+        isolated.__enter__()
+        self.addCleanup(isolated.__exit__, None, None, None)
         self.cfg.project_root = self.root / "project"
         self.cfg.project_root.mkdir()
         self.cfg.workspace_base, self.cfg.branch_base = "workspaces", "evo"

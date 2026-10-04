@@ -121,7 +121,7 @@ class EvaluationTests(unittest.TestCase):
                 cleanup = Mock()
                 query = Mock()
                 workspace = self.root / "workspace"
-                cfg = SimpleNamespace(db_file=path, island_count=1, inspiration_count=0, cross_island_inspiration_probability=0, softmax_temp=0.05, eval_fn=evaluate, evaluation_semaphore=BoundedSemaphore(1), max_fix_attempts=2, objective="Faster", branch_base="evo")
+                cfg = SimpleNamespace(db_file=path, island_count=1, exploration_probability=0.3, inspiration_count=0, cross_island_inspiration_probability=0, softmax_temp=0.05, eval_fn=evaluate, evaluation_semaphore=BoundedSemaphore(1), max_fix_attempts=2, objective="Faster", branch_base="evo")
                 with patch.object(config, "cfg", cfg), patch.object(git, "create_new_workspace", return_value=workspace), patch.object(git, "delete_workspace", cleanup), patch.object(llm, "run_agent", route), patch.object(llm, "get_attempt_name", return_value="Attempt"):
                     if isinstance(outcome, RuntimeError):
                         with self.assertRaisesRegex(RuntimeError, "evaluator broke"):
@@ -170,7 +170,7 @@ class EvaluationTests(unittest.TestCase):
                     route = Mock(return_value="test-model")
                     cleanup = Mock()
                     workspace = self.root / "workspace"
-                    cfg = SimpleNamespace(db_file=path, island_count=1, inspiration_count=0, cross_island_inspiration_probability=0, softmax_temp=0.05, eval_fn=evaluate, evaluation_semaphore=BoundedSemaphore(1), max_fix_attempts=1, objective="Faster", branch_base="evo")
+                    cfg = SimpleNamespace(db_file=path, island_count=1, exploration_probability=0.3, inspiration_count=0, cross_island_inspiration_probability=0, softmax_temp=0.05, eval_fn=evaluate, evaluation_semaphore=BoundedSemaphore(1), max_fix_attempts=1, objective="Faster", branch_base="evo")
                     with patch.object(config, "cfg", cfg), patch.object(git, "create_new_workspace", return_value=workspace), patch.object(git, "delete_workspace", cleanup), patch.object(llm, "run_agent", route):
                         with self.assertRaises(EvalError):
                             evolve.run_worker(0)

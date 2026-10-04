@@ -111,7 +111,7 @@ class ActivityTests(unittest.TestCase):
         server = Mock(spec=activity.StatusServer)
         database = Mock()
         database.return_value.weighted_sample.return_value = self.parent
-        with patch.object(config, "cfg", SimpleNamespace(db_file=self.path, island_count=1)), patch.object(evolve, "_status_server", server), patch.object(evolve, "Database", database), patch.object(evolve.git, "create_new_workspace", side_effect=RuntimeError("failed")):
+        with patch.object(config, "cfg", SimpleNamespace(db_file=self.path, island_count=1, exploration_probability=0.3)), patch.object(evolve, "_status_server", server), patch.object(evolve, "Database", database), patch.object(evolve.git, "create_new_workspace", side_effect=RuntimeError("failed")):
             with self.assertRaisesRegex(RuntimeError, "failed"):
                 evolve.run_worker(0)
         child = server.add.call_args.args[0]

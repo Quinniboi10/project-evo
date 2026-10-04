@@ -114,7 +114,7 @@ class Config:
         self.island_count = self.config["general"].get("island_count", 4)
         self.cross_island_inspiration_probability = self.config["general"].get("cross_island_inspiration_probability", 0.1)
 
-        self.exploration_probability = self.config["general"]["exploration_probability"]
+        self.exploration_probability = self.config["general"].get("exploration_probability", 0.3)
 
         self.branch_base    = self.config["git"]["branch_base"]
         self.workspace_base = self.config["git"]["workspace_base"]

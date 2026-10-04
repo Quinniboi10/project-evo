@@ -29,6 +29,7 @@ class ConfigTests(unittest.TestCase):
 
     def test_invalid_numeric_settings_fail_before_provider_setup(self):
         settings = {
+            "exploration_probability = 0.3": ("exploration_probability", ["-0.1", "1.1", "nan", "inf", "-inf", "true", '\"0.5\"']),
             "temperature = 0.05": ("temperature", ["0", "-1", "nan", "inf", "-inf", "true", '\"0.5\"']),
             "concurrency = 5": ("concurrency", ["0", "-1", "true", "1.5", '\"2\"']),
             "max_fix_attempts = 3": ("max_fix_attempts", ["-1", "true", "1.5", '\"2\"']),
@@ -67,7 +68,16 @@ class ConfigTests(unittest.TestCase):
     def test_default_configuration(self):
         cfg = self.load(self.template)
         self.assertEqual(cfg.concurrency, 5)
+        self.assertEqual(cfg.exploration_probability, 0.3)
         self.assertEqual(cfg.extra_args("sol"), [])
+
+    def test_exploration_probability_defaults_and_boundaries(self):
+        cfg = self.load(self.template.replace("exploration_probability = 0.3", ""))
+        self.assertEqual(cfg.exploration_probability, 0.3)
+        for value in ("0", "1", "0.0", "1.0", "0.7"):
+            with self.subTest(value=value):
+                cfg = self.load(self.template.replace("exploration_probability = 0.3", f"exploration_probability = {value}"))
+                self.assertEqual(cfg.exploration_probability, float(value))
 
     def test_zero_primary_capacity_uses_fallback_configuration(self):
         cfg = self.load(self.template.replace("max_concurrency = 3", "max_concurrency = 0"))
